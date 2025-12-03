@@ -1,4 +1,5 @@
-import { Transaction, Goal, UserProfile, Budget, Account, Category, Debt, Alert, LeakageAnalysis } from '../types';
+
+import { Transaction, Goal, UserProfile, Budget, Account, Category, Debt, Alert, LeakageAnalysis, ReportData, InterconnectedSummaryData, PredictionBaseData } from '../types';
 
 const API_URL = 'http://localhost:8000/api';
 
@@ -116,6 +117,29 @@ export const djangoService = {
   getLeakageAnalysis: async (): Promise<LeakageAnalysis> => {
     const res = await fetch(`${API_URL}/leakage-analysis/`);
     if (!res.ok) return { totalPotential: 0, leaksCount: 0, period: '-', suggestions: [] };
+    return res.json();
+  },
+
+  // --- Reports ---
+  getReports: async (range: string, account: string): Promise<ReportData> => {
+    // Construct query params
+    const params = new URLSearchParams({ range, account });
+    const res = await fetch(`${API_URL}/reports/?${params}`);
+    if (!res.ok) throw new Error('Failed to fetch reports');
+    return res.json();
+  },
+
+  // --- Interconnected Summary ---
+  getInterconnectedSummary: async (): Promise<InterconnectedSummaryData> => {
+    const res = await fetch(`${API_URL}/interconnected-summary/`);
+    if (!res.ok) throw new Error('Failed to fetch summary');
+    return res.json();
+  },
+
+  // --- Predictive Analysis ---
+  getPredictiveAnalysis: async (): Promise<PredictionBaseData> => {
+    const res = await fetch(`${API_URL}/predictive-analysis/`);
+    if (!res.ok) throw new Error('Failed to fetch predictive data');
     return res.json();
   }
 };

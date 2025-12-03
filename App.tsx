@@ -14,11 +14,12 @@ import { FinancialHealth } from './components/FinancialHealth';
 import { InterconnectedSummary } from './components/InterconnectedSummary';
 import { PredictiveAnalysis } from './components/PredictiveAnalysis';
 import { Transaction, UserProfile } from './types';
-import { Bell } from 'lucide-react';
+import { Bell, Menu } from 'lucide-react';
 import { djangoService } from './services/djangoService';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState('dashboard');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   const [userProfile, setUserProfile] = useState<UserProfile>({ name: '', email: '', avatar: '' });
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -111,13 +112,27 @@ const App: React.FC = () => {
 
   return (
     <div className="flex min-h-screen bg-[#0b120f] text-gray-200 font-sans">
-      <Sidebar currentView={currentView} setView={setCurrentView} />
+      <Sidebar 
+        currentView={currentView} 
+        setView={setCurrentView} 
+        isOpen={isSidebarOpen} 
+        onClose={() => setIsSidebarOpen(false)} 
+      />
       
-      <main className="flex-1 ml-64 p-8">
-        <header className="flex justify-between items-center mb-8">
+      {/* Main Content: margin-left 64 (16rem) only on large screens */}
+      <main className="flex-1 lg:ml-64 p-4 md:p-8 transition-all duration-300 w-full">
+        <header className="flex justify-between items-center mb-8 gap-4">
+           {/* Mobile Hamburger Menu */}
+           <button 
+             onClick={() => setIsSidebarOpen(true)}
+             className="lg:hidden p-2 text-white hover:bg-white/10 rounded-xl transition-colors"
+           >
+             <Menu size={24} />
+           </button>
+
            <div className="flex-1"></div> 
            
-           <div className="flex items-center gap-4">
+           <div className="flex items-center gap-3 md:gap-4">
               <button 
                 onClick={() => setCurrentView('alerts')}
                 className="relative p-2 text-gray-400 hover:text-white transition-colors bg-axxy-card rounded-full border border-white/5"

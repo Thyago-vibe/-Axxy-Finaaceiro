@@ -31,6 +31,7 @@ export interface Goal {
   targetAmount: number;
   deadline: string;
   color: string;
+  imageUrl?: string; // Added for Summary view
 }
 
 export interface Budget {
@@ -48,6 +49,7 @@ export interface Debt {
   monthly: number;
   dueDate: string;
   status: 'Em dia' | 'Pendente' | 'Atrasado';
+  isUrgent?: boolean; // Added for Summary view logic
 }
 
 export interface Alert {
@@ -87,4 +89,56 @@ export interface LeakageAnalysis {
   leaksCount: number;
   period: string;
   suggestions: LeakageSuggestion[];
+}
+
+// --- New Types for Reports & Summary ---
+
+export interface ReportCategoryData {
+  name: string;
+  value: number;
+  percentage: number;
+  color: string;
+  [key: string]: any;
+}
+
+export interface ReportKPI {
+  totalSpent: number;
+  totalSpentChange: number; // percentage
+  topCategory: string;
+  topCategoryValue: number;
+  transactionCount: number;
+  transactionCountChange: number; // percentage
+}
+
+export interface ReportData {
+  kpi: ReportKPI;
+  distribution: ReportCategoryData[];
+}
+
+export interface InterconnectedSummaryData {
+  activeGoals: Goal[];
+  upcomingDebts: Debt[];
+  insights: {
+    bestDecisions: string[];
+    suggestedCuts: {
+      text: string;
+      value: number;
+    }[];
+  };
+}
+
+export interface PredictionScenario {
+  id: number;
+  label: string;
+  savings: number;
+  checked: boolean;
+  iconName: string; // 'ShoppingBag', 'Clapperboard', 'Car'
+  color: string;
+}
+
+export interface PredictionBaseData {
+  currentBalance: number;
+  monthlyIncome: number;
+  baseExpense: number;
+  scenarios: PredictionScenario[];
 }

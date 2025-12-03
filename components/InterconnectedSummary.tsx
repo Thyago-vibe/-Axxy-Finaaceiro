@@ -1,11 +1,29 @@
-import React from 'react';
-import { Share2, CheckCircle2, Scissors, AlertCircle, Hourglass, ChevronRight, Trophy, TrendingUp } from 'lucide-react';
+
+import React, { useState, useEffect } from 'react';
+import { Share2, CheckCircle2, Scissors, AlertCircle, Hourglass, Trophy, TrendingUp } from 'lucide-react';
+import { djangoService } from '../services/djangoService';
+import { InterconnectedSummaryData } from '../types';
 
 interface InterconnectedSummaryProps {
   setView: (view: string) => void;
 }
 
 export const InterconnectedSummary: React.FC<InterconnectedSummaryProps> = ({ setView }) => {
+  const [data, setData] = useState<InterconnectedSummaryData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    djangoService.getInterconnectedSummary()
+        .then(setData)
+        .catch(err => console.error("Failed to load summary:", err))
+        .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div className="text-white text-center py-20">Carregando resumo...</div>;
+  if (!data) return <div className="text-gray-500 text-center py-20">Não foi possível carregar o resumo interligado.</div>;
+
+  const { activeGoals, upcomingDebts, insights } = data;
+
   return (
     <div className="space-y-8 animate-fade-in max-w-7xl mx-auto pb-10">
       <div>
@@ -22,59 +40,45 @@ export const InterconnectedSummary: React.FC<InterconnectedSummaryProps> = ({ se
           <section>
             <h3 className="text-xl font-bold text-white mb-6">Suas Metas Ativas</h3>
             <div className="space-y-4">
-              {/* Goal Card 1 */}
-              <div className="bg-[#15221c] border border-[#1e332a] rounded-3xl overflow-hidden flex flex-col sm:flex-row hover:border-gray-700 transition-colors group">
-                <div className="w-full sm:w-40 h-32 sm:h-auto relative bg-gray-800 shrink-0">
-                  <img 
-                    src="https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&q=80&w=300&h=300" 
-                    alt="Paris" 
-                    className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent sm:hidden"></div>
-                </div>
-                <div className="p-6 flex-1 flex flex-col justify-center">
-                  <div className="flex justify-between items-start mb-2">
-                    <h4 className="text-lg font-bold text-white">Viagem para a Europa</h4>
-                    <span className="text-gray-400 text-sm font-medium">70%</span>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-xs text-gray-500 mb-1">
-                      <span>Progresso</span>
+              {activeGoals.map(goal => {
+                const progress = Math.min((goal.currentAmount / goal.targetAmount) * 100, 100);
+                return (
+                  <div key={goal.id} className="bg-[#15221c] border border-[#1e332a] rounded-3xl overflow-hidden flex flex-col sm:flex-row hover:border-gray-700 transition-colors group">
+                    <div className="w-full sm:w-40 h-32 sm:h-auto relative bg-gray-800 shrink-0">
+                      {/* Default placeholder or image from backend */}
+                      <div className={`w-full h-full ${goal.imageUrl ? '' : 'bg-gradient-to-br from-gray-800 to-gray-900'} flex items-center justify-center`}>
+                          {goal.imageUrl ? (
+                              <img src={goal.imageUrl} alt={goal.name} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                          ) : (
+                              <Trophy className="text-gray-600" />
+                          )}
+                      </div>
                     </div>
-                    <div className="h-2.5 w-full bg-[#0b120f] rounded-full overflow-hidden">
-                      <div className="h-full bg-green-500 rounded-full" style={{ width: '70%' }}></div>
+                    <div className="p-6 flex-1 flex flex-col justify-center">
+                      <div className="flex justify-between items-start mb-2">
+                        <h4 className="text-lg font-bold text-white">{goal.name}</h4>
+                        <span className="text-gray-400 text-sm font-medium">{progress.toFixed(0)}%</span>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-xs text-gray-500 mb-1">
+                          <span>Progresso</span>
+                        </div>
+                        <div className="h-2.5 w-full bg-[#0b120f] rounded-full overflow-hidden">
+                          <div className={`h-full ${goal.color || 'bg-green-500'} rounded-full`} style={{ width: `${progress}%` }}></div>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-2">
+                           Meta para {new Date(goal.deadline).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })} - 
+                           Faltam R$ {(goal.targetAmount - goal.currentAmount).toLocaleString('pt-BR', {minimumFractionDigits: 2})}
+                        </p>
+                      </div>
                     </div>
-                    <p className="text-xs text-gray-400 mt-2">Meta para Junho 2025 - Faltam R$ 4.500,00</p>
                   </div>
-                </div>
-              </div>
-
-              {/* Goal Card 2 */}
-              <div className="bg-[#15221c] border border-[#1e332a] rounded-3xl overflow-hidden flex flex-col sm:flex-row hover:border-gray-700 transition-colors group">
-                <div className="w-full sm:w-40 h-32 sm:h-auto relative bg-gray-800 shrink-0">
-                  <img 
-                    src="https://images.unsplash.com/photo-1579621970563-ebec7560eb3e?auto=format&fit=crop&q=80&w=300&h=300" 
-                    alt="Savings" 
-                    className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent sm:hidden"></div>
-                </div>
-                <div className="p-6 flex-1 flex flex-col justify-center">
-                  <div className="flex justify-between items-start mb-2">
-                    <h4 className="text-lg font-bold text-white">Reserva de Emergência</h4>
-                    <span className="text-gray-400 text-sm font-medium">90%</span>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-xs text-gray-500 mb-1">
-                      <span>Progresso</span>
-                    </div>
-                    <div className="h-2.5 w-full bg-[#0b120f] rounded-full overflow-hidden">
-                      <div className="h-full bg-green-500 rounded-full" style={{ width: '90%' }}></div>
-                    </div>
-                    <p className="text-xs text-gray-400 mt-2">Meta para Dezembro 2024 - Faltam R$ 1.200,00</p>
-                  </div>
-                </div>
-              </div>
+                );
+              })}
+              
+              {activeGoals.length === 0 && (
+                  <div className="text-gray-500 text-center py-6 border border-[#1e332a] rounded-3xl">Nenhuma meta ativa no momento.</div>
+              )}
             </div>
 
             <button 
@@ -89,33 +93,29 @@ export const InterconnectedSummary: React.FC<InterconnectedSummaryProps> = ({ se
           <section>
             <h3 className="text-xl font-bold text-white mb-6">Atenção: Dívidas Próximas</h3>
             <div className="space-y-4">
-              <div className="bg-[#15221c] border border-[#1e332a] rounded-2xl p-5 flex items-center gap-4 hover:bg-[#1a2b24] transition-colors">
-                <div className="w-12 h-12 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center shrink-0 border border-red-500/20">
-                  <AlertCircle size={24} />
+              {upcomingDebts.map(debt => (
+                <div key={debt.id} className="bg-[#15221c] border border-[#1e332a] rounded-2xl p-5 flex items-center gap-4 hover:bg-[#1a2b24] transition-colors">
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 border ${debt.isUrgent ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'}`}>
+                    {debt.isUrgent ? <AlertCircle size={24} /> : <Hourglass size={24} />}
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="text-white font-bold">{debt.name}</h4>
+                    <p className="text-sm text-gray-400">Vence em {new Date(debt.dueDate).toLocaleDateString('pt-BR')}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-white font-bold text-lg">R$ {debt.remaining.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+                    {debt.isUrgent ? (
+                        <span className="inline-block px-2.5 py-0.5 rounded-full bg-red-500 text-white text-[10px] font-bold uppercase tracking-wide">Urgente</span>
+                    ) : (
+                        <span className="inline-block px-2.5 py-0.5 rounded-full bg-yellow-600 text-white text-[10px] font-bold uppercase tracking-wide">Atenção</span>
+                    )}
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <h4 className="text-white font-bold">Cartão de Crédito</h4>
-                  <p className="text-sm text-gray-400">Vence em 2 dias</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-white font-bold text-lg">R$ 1.250,80</p>
-                  <span className="inline-block px-2.5 py-0.5 rounded-full bg-red-500 text-white text-[10px] font-bold uppercase tracking-wide">Urgente</span>
-                </div>
-              </div>
+              ))}
 
-              <div className="bg-[#15221c] border border-[#1e332a] rounded-2xl p-5 flex items-center gap-4 hover:bg-[#1a2b24] transition-colors">
-                <div className="w-12 h-12 rounded-full bg-yellow-500/10 text-yellow-500 flex items-center justify-center shrink-0 border border-yellow-500/20">
-                  <Hourglass size={24} />
-                </div>
-                <div className="flex-1">
-                  <h4 className="text-white font-bold">Conta de Energia</h4>
-                  <p className="text-sm text-gray-400">Vence em 7 dias</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-white font-bold text-lg">R$ 280,00</p>
-                  <span className="inline-block px-2.5 py-0.5 rounded-full bg-yellow-600 text-white text-[10px] font-bold uppercase tracking-wide">Atenção</span>
-                </div>
-              </div>
+              {upcomingDebts.length === 0 && (
+                  <div className="text-gray-500 text-center py-6 border border-[#1e332a] rounded-3xl">Nenhuma dívida próxima do vencimento.</div>
+              )}
             </div>
 
             <button 
@@ -139,22 +139,16 @@ export const InterconnectedSummary: React.FC<InterconnectedSummaryProps> = ({ se
                   <Trophy size={14} /> Melhores Decisões
                 </p>
                 <div className="space-y-4">
-                  <div className="flex gap-3">
-                    <div className="mt-0.5 w-5 h-5 rounded-full bg-green-500 text-axxy-bg flex items-center justify-center shrink-0">
-                      <CheckCircle2 size={12} strokeWidth={4} />
-                    </div>
-                    <p className="text-sm text-gray-300 leading-relaxed">
-                      Você economizou <span className="text-white font-medium">R$ 85</span> em restaurantes este mês. Continue assim!
-                    </p>
-                  </div>
-                  <div className="flex gap-3">
-                    <div className="mt-0.5 w-5 h-5 rounded-full bg-green-500 text-axxy-bg flex items-center justify-center shrink-0">
-                      <CheckCircle2 size={12} strokeWidth={4} />
-                    </div>
-                    <p className="text-sm text-gray-300 leading-relaxed">
-                      Sua meta de emergência está quase completa. Ótimo trabalho!
-                    </p>
-                  </div>
+                  {insights.bestDecisions.length > 0 ? insights.bestDecisions.map((decision, idx) => (
+                      <div key={idx} className="flex gap-3">
+                        <div className="mt-0.5 w-5 h-5 rounded-full bg-green-500 text-axxy-bg flex items-center justify-center shrink-0">
+                          <CheckCircle2 size={12} strokeWidth={4} />
+                        </div>
+                        <p className="text-sm text-gray-300 leading-relaxed">{decision}</p>
+                      </div>
+                  )) : (
+                      <p className="text-sm text-gray-500">Ainda sem insights de decisões.</p>
+                  )}
                 </div>
               </div>
 
@@ -162,13 +156,19 @@ export const InterconnectedSummary: React.FC<InterconnectedSummaryProps> = ({ se
                 <p className="text-xs font-bold text-yellow-500 uppercase tracking-wider mb-4 flex items-center gap-2">
                   <Scissors size={14} /> Cortes Sugeridos
                 </p>
-                <div className="flex gap-3">
-                   <div className="mt-0.5 w-5 h-5 rounded-full bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 flex items-center justify-center shrink-0">
-                      <TrendingUp size={12} />
-                   </div>
-                   <p className="text-sm text-gray-300 leading-relaxed">
-                     Considere reduzir gastos com assinaturas. Você gasta <span className="text-white font-medium">R$ 120/mês</span>.
-                   </p>
+                <div className="space-y-4">
+                    {insights.suggestedCuts.length > 0 ? insights.suggestedCuts.map((cut, idx) => (
+                        <div key={idx} className="flex gap-3">
+                           <div className="mt-0.5 w-5 h-5 rounded-full bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 flex items-center justify-center shrink-0">
+                              <TrendingUp size={12} />
+                           </div>
+                           <p className="text-sm text-gray-300 leading-relaxed">
+                             {cut.text} <span className="text-white font-medium">R$ {cut.value}/mês</span>.
+                           </p>
+                        </div>
+                    )) : (
+                        <p className="text-sm text-gray-500">Nenhum corte sugerido no momento.</p>
+                    )}
                 </div>
               </div>
             </div>

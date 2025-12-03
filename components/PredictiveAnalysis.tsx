@@ -1,24 +1,47 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { TrendingUp, ShoppingBag, Clapperboard, Car, Plus, Lightbulb } from 'lucide-react';
+import { TrendingUp, ShoppingBag, Clapperboard, Car, Plus, Lightbulb, AlertCircle } from 'lucide-react';
+import { djangoService } from '../services/djangoService';
+import { PredictionBaseData, PredictionScenario } from '../types';
 
 export const PredictiveAnalysis: React.FC = () => {
   const [timeframe, setTimeframe] = useState<'3m' | '6m' | '12m'>('3m');
-  const [scenarios, setScenarios] = useState([
-    { id: 1, label: 'Cortar fast-food', savings: 120, checked: true, icon: ShoppingBag, color: 'text-purple-400' },
-    { id: 2, label: 'Cancelar streaming', savings: 45, checked: false, icon: Clapperboard, color: 'text-blue-400' },
-    { id: 3, label: 'Reduzir Uber/99', savings: 150, checked: true, icon: Car, color: 'text-orange-400' },
-  ]);
+  const [loading, setLoading] = useState(true);
+  
+  // State for fetched base data
+  const [baseData, setBaseData] = useState<PredictionBaseData | null>(null);
+  
+  // Local state for toggling checkboxes (initialized after fetch)
+  const [scenarios, setScenarios] = useState<PredictionScenario[]>([]);
+
+  useEffect(() => {
+    djangoService.getPredictiveAnalysis()
+        .then(data => {
+            setBaseData(data);
+            setScenarios(data.scenarios); // Initialize scenarios from backend
+        })
+        .catch(err => console.error("Failed to load predictive data:", err))
+        .finally(() => setLoading(false));
+  }, []);
 
   const toggleScenario = (id: number) => {
-    setScenarios(scenarios.map(s => s.id === id ? { ...s, checked: !s.checked } : s));
+    setScenarios(prev => prev.map(s => s.id === id ? { ...s, checked: !s.checked } : s));
   };
 
-  // Mock data generation based on selected scenarios
+  const getIcon = (iconName: string) => {
+      switch(iconName) {
+          case 'ShoppingBag': return ShoppingBag;
+          case 'Clapperboard': return Clapperboard;
+          case 'Car': return Car;
+          default: return AlertCircle;
+      }
+  };
+
   const generateData = () => {
-    const baseBalance = 2000;
-    const monthlyIncome = 5800;
-    const baseExpense = 5000;
+    if (!baseData) return [];
+
+    const { currentBalance, monthlyIncome, baseExpense } = baseData;
     
     // Calculate monthly savings from active scenarios
     const scenarioSavings = scenarios
@@ -28,18 +51,21 @@ export const PredictiveAnalysis: React.FC = () => {
     const netMonthly = monthlyIncome - baseExpense + scenarioSavings;
     
     const months = timeframe === '3m' ? 3 : timeframe === '6m' ? 6 : 12;
-    const data = [];
+    const chartData = [];
 
     for (let i = 0; i <= months; i++) {
-      data.push({
+      chartData.push({
         name: i === 0 ? 'Agora' : `Mês ${i}`,
-        balance: baseBalance + (netMonthly * i),
+        balance: currentBalance + (netMonthly * i),
       });
     }
-    return data;
+    return chartData;
   };
 
-  const data = generateData();
+  if (loading) return <div className="text-white text-center py-20">Carregando análise preditiva...</div>;
+  if (!baseData) return <div className="text-gray-500 text-center py-20">Dados insuficientes para análise.</div>;
+
+  const chartData = generateData();
   const totalSavings = scenarios.filter(s => s.checked).reduce((acc, curr) => acc + curr.savings, 0);
   const projectedExtra = totalSavings * (timeframe === '3m' ? 3 : timeframe === '6m' ? 6 : 12);
 
@@ -75,7 +101,7 @@ export const PredictiveAnalysis: React.FC = () => {
 
            <div className="h-[350px] w-full">
              <ResponsiveContainer width="100%" height="100%">
-               <LineChart data={data} margin={{ top: 10, right: 30, left: 10, bottom: 0 }}>
+               <LineChart data={chartData} margin={{ top: 10, right: 30, left: 10, bottom: 0 }}>
                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e332a" />
                  <XAxis 
                     dataKey="name" 
@@ -88,13 +114,13 @@ export const PredictiveAnalysis: React.FC = () => {
                     axisLine={false} 
                     tickLine={false} 
                     tick={{ fill: '#9ca3af', fontSize: 12 }} 
-                    tickFormatter={(val) => `R$${val/1000}k`}
+                    tickFormatter={(val) => `R$${(val/1000).toFixed(1)}k`}
                     dx={-10}
                  />
                  <Tooltip 
                     contentStyle={{ backgroundColor: '#0b120f', border: '1px solid #1e332a', borderRadius: '12px', color: '#fff' }}
                     itemStyle={{ color: '#22c55e' }}
-                    formatter={(val: number) => [`R$ ${val.toLocaleString('pt-BR')}`, 'Saldo Projetado']}
+                    formatter={(val: number) => [`R$ ${val.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`, 'Saldo Projetado']}
                  />
                  <Line 
                     type="monotone" 
@@ -118,7 +144,7 @@ export const PredictiveAnalysis: React.FC = () => {
               
               <div className="space-y-3">
                  {scenarios.map((scenario) => {
-                   const Icon = scenario.icon;
+                   const Icon = getIcon(scenario.iconName);
                    return (
                      <div 
                        key={scenario.id}
@@ -145,6 +171,7 @@ export const PredictiveAnalysis: React.FC = () => {
                      </div>
                    );
                  })}
+                 {scenarios.length === 0 && <div className="text-gray-500">Nenhum cenário disponível.</div>}
               </div>
 
               <button className="flex items-center gap-2 text-axxy-primary text-sm font-bold hover:text-green-400 transition-colors mt-2">
