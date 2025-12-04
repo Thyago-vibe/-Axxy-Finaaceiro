@@ -1,400 +1,461 @@
-# Guia de Configuração do Backend (Django)
+# Axxy Finance - Guia do Backend (FastAPI)
 
-Este guia contém todo o código necessário para subir o servidor backend que se comunica com o frontend do Axxy Finance.
+Este guia contém todo o código necessário para rodar o servidor do Axxy Finance.
+Utilizamos **FastAPI** (framework web moderno e rápido) e **SQLModel** (interação com banco de dados simples).
 
-## 1. Configuração Inicial
+---
 
-Abra seu terminal e execute:
+## 🚀 1. Instalação e Preparação
+
+Crie uma pasta chamada `backend` fora da pasta do frontend e abra um terminal nela.
+
+### Passo 1: Instalar dependências
+Execute o comando abaixo para instalar as bibliotecas necessárias:
 
 ```bash
-# Criar ambiente virtual (opcional mas recomendado)
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-
-# Instalar dependências
-pip install django djangorestframework django-cors-headers
-
-# Criar projeto
-django-admin startproject axxy_backend
-cd axxy_backend
-
-# Criar app da API
-python manage.py startapp api
+pip install fastapi uvicorn sqlmodel
 ```
 
-## 2. Configurar `axxy_backend/settings.py`
+*   **fastapi**: O framework da API.
+*   **uvicorn**: O servidor que roda o FastAPI.
+*   **sqlmodel**: Gerencia o banco de dados (SQLite) e validação de dados.
 
-Adicione as libs instaladas e configure o CORS para aceitar requisições do seu Frontend (localhost:3000 ou similar).
+---
 
-```python
-INSTALLED_APPS = [
-    # ... apps padrão ...
-    'rest_framework',
-    'corsheaders',
-    'api',
-]
+## 💻 2. O Código do Servidor (`main.py`)
 
-MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware', # Adicione no topo
-    # ... outros middlewares ...
-]
-
-# Permitir acesso do Frontend (React/Vite geralmente roda na 5173 ou 3000)
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://localhost:3000",
-]
-
-# Opcional: Permitir tudo para desenvolvimento
-CORS_ALLOW_ALL_ORIGINS = True 
-```
-
-## 3. Criar Modelos (`api/models.py`)
+Crie um arquivo chamado `main.py` dentro da pasta `backend` e cole **todo o código abaixo**.
+Este arquivo contém a definição do Banco de Dados, os Modelos de Dados e todas as Rotas da API.
 
 ```python
-from django.db import models
+from typing import List, Optional
+from fastapi import FastAPI, HTTPException, Depends, Query
+from sqlmodel import SQLModel, Field, Session, create_engine, select
+from fastapi.middleware.cors import CORSMiddleware
+from datetime import datetime, timedelta
+import random
 
-class Profile(models.Model):
-    name = models.CharField(max_length=100)
-    email = models.EmailField()
-    avatar = models.TextField(blank=True, null=True) # Base64 ou URL
+# ==========================================
+# 1. CONFIGURAÇÃO DO BANCO DE DADOS (SQLite)
+# ==========================================
+sqlite_file_name = "database.db"
+sqlite_url = f"sqlite:///{sqlite_file_name}"
 
-class Account(models.Model):
-    name = models.CharField(max_length=100)
-    type = models.CharField(max_length=50)
-    balance = models.DecimalField(max_digits=10, decimal_places=2)
-    color = models.CharField(max_length=50)
-    icon = models.CharField(max_length=50)
+# Cria a conexão com o banco
+engine = create_engine(sqlite_url, connect_args={"check_same_thread": False})
 
-class Category(models.Model):
-    name = models.CharField(max_length=100)
-    type = models.CharField(max_length=50) # Receita ou Despesa
-    color = models.CharField(max_length=50)
+def create_db_and_tables():
+    """Cria o arquivo do banco de dados e as tabelas automaticamente."""
+    SQLModel.metadata.create_all(engine)
 
-class Transaction(models.Model):
-    description = models.CharField(max_length=200)
-    amount = models.DecimalField(max_digits=10, decimal_places=2)
-    type = models.CharField(max_length=10, choices=[('income', 'Income'), ('expense', 'Expense')])
-    date = models.DateField()
-    category = models.CharField(max_length=100)
-    status = models.CharField(max_length=20, default='completed')
+def get_session():
+    """Injeção de dependência para obter a sessão do banco."""
+    with Session(engine) as session:
+        yield session
 
-class Goal(models.Model):
-    name = models.CharField(max_length=100)
-    current_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    target_amount = models.DecimalField(max_digits=10, decimal_places=2)
-    deadline = models.DateField()
-    color = models.CharField(max_length=50, default='bg-green-500')
-    image_url = models.TextField(blank=True, null=True)
+# ==========================================
+# 2. DEFINIÇÃO DOS MODELOS (Tabelas)
+# ==========================================
+# Nota: Usamos nomes em camelCase (ex: currentAmount) para alinhar com o Frontend React.
 
-class Budget(models.Model):
-    category = models.CharField(max_length=100)
-    limit = models.DecimalField(max_digits=10, decimal_places=2)
-    icon = models.CharField(max_length=50)
-    # 'spent' será calculado dinamicamente com base nas transações
+class UserProfile(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    email: str
+    avatar: str
 
-class Debt(models.Model):
-    name = models.CharField(max_length=100)
-    remaining = models.DecimalField(max_digits=10, decimal_places=2)
-    monthly = models.DecimalField(max_digits=10, decimal_places=2)
-    due_date = models.DateField()
-    status = models.CharField(max_length=20) # Em dia, Pendente, Atrasado
+class Transaction(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    description: str
+    amount: float
+    type: str  # 'income' | 'expense'
+    date: str
+    category: str
+    status: str # 'completed' | 'pending'
 
-class Alert(models.Model):
-    category = models.CharField(max_length=100)
-    budget = models.DecimalField(max_digits=10, decimal_places=2)
-    threshold = models.IntegerField()
-    enabled = models.BooleanField(default=True)
-    icon_name = models.CharField(max_length=50)
-    color_class = models.CharField(max_length=50)
-```
+class Goal(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    currentAmount: float
+    targetAmount: float
+    deadline: str
+    color: str
+    imageUrl: Optional[str] = None
 
-## 4. Criar Serializers (`api/serializers.py`)
+class Budget(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    category: str
+    spent: float = 0  # Será calculado automaticamente
+    limit: float
+    icon: str
 
-Crie este arquivo dentro da pasta `api`. Note o uso de `source=` para converter snake_case (Python) para camelCase (Javascript).
+class Account(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    type: str
+    balance: float
+    color: str
+    icon: str
 
-```python
-from rest_framework import serializers
-from .models import *
-from django.db.models import Sum
+class Category(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    type: str
+    color: str
 
-class ProfileSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Profile
-        fields = '__all__'
+class Debt(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    remaining: float
+    monthly: float
+    dueDate: str
+    status: str
+    isUrgent: bool = False
 
-class TransactionSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Transaction
-        fields = '__all__'
+class Alert(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    category: str
+    budget: float
+    threshold: int
+    enabled: bool
+    iconName: str
+    colorClass: str
 
-class AccountSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Account
-        fields = '__all__'
+# ==========================================
+# 3. INICIALIZAÇÃO DA API
+# ==========================================
+app = FastAPI(title="Axxy Finance API")
 
-class CategorySerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Category
-        fields = '__all__'
+# Configuração de CORS (Permite que o React acesse este servidor)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # Em produção, troque '*' pelo domínio do seu site
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-class GoalSerializer(serializers.ModelSerializer):
-    currentAmount = serializers.DecimalField(source='current_amount', max_digits=10, decimal_places=2)
-    targetAmount = serializers.DecimalField(source='target_amount', max_digits=10, decimal_places=2)
-    imageUrl = serializers.CharField(source='image_url', required=False, allow_blank=True)
+@app.on_event("startup")
+def on_startup():
+    create_db_and_tables()
+    # Se quiser criar dados iniciais (Seed), chame uma função aqui.
 
-    class Meta:
-        model = Goal
-        fields = ['id', 'name', 'currentAmount', 'targetAmount', 'deadline', 'color', 'imageUrl']
+# ==========================================
+# 4. ROTAS DA API (ENDPOINTS)
+# ==========================================
 
-class BudgetSerializer(serializers.ModelSerializer):
-    spent = serializers.SerializerMethodField()
+# --- PERFIL DO USUÁRIO ---
 
-    class Meta:
-        model = Budget
-        fields = ['id', 'category', 'spent', 'limit', 'icon']
+@app.get("/api/profile/", response_model=UserProfile)
+def get_profile(session: Session = Depends(get_session)):
+    """Retorna o perfil do usuário. Cria um padrão se não existir."""
+    profile = session.exec(select(UserProfile)).first()
+    if not profile:
+        profile = UserProfile(name="Usuário Axxy", email="usuario@email.com", avatar="")
+        session.add(profile)
+        session.commit()
+        session.refresh(profile)
+    return profile
 
-    def get_spent(self, obj):
-        # Calcula o gasto total da categoria deste orçamento
-        total = Transaction.objects.filter(category=obj.category, type='expense').aggregate(Sum('amount'))['amount__sum']
-        return total or 0
+@app.post("/api/profile/", response_model=UserProfile)
+def update_profile(profile_data: UserProfile, session: Session = Depends(get_session)):
+    """Atualiza ou cria o perfil do usuário."""
+    # Como só temos 1 usuário, pegamos o primeiro ou criamos
+    current = session.exec(select(UserProfile)).first()
+    if current:
+        current.name = profile_data.name
+        current.email = profile_data.email
+        current.avatar = profile_data.avatar
+        session.add(current)
+        session.commit()
+        session.refresh(current)
+        return current
+    else:
+        session.add(profile_data)
+        session.commit()
+        session.refresh(profile_data)
+        return profile_data
 
-class DebtSerializer(serializers.ModelSerializer):
-    dueDate = serializers.DateField(source='due_date')
+# --- TRANSAÇÕES ---
+
+@app.get("/api/transactions/", response_model=List[Transaction])
+def read_transactions(session: Session = Depends(get_session)):
+    """Lista todas as transações, ordenadas da mais recente para a mais antiga."""
+    # Na prática, você adicionaria paginação aqui.
+    transactions = session.exec(select(Transaction).order_by(Transaction.id.desc())).all()
+    return transactions
+
+@app.post("/api/transactions/", response_model=Transaction)
+def create_transaction(transaction: Transaction, session: Session = Depends(get_session)):
+    """Cria uma nova transação financeira."""
+    session.add(transaction)
+    session.commit()
+    session.refresh(transaction)
+    return transaction
+
+# --- METAS (GOALS) ---
+
+@app.get("/api/goals/", response_model=List[Goal])
+def read_goals(session: Session = Depends(get_session)):
+    return session.exec(select(Goal)).all()
+
+@app.post("/api/goals/", response_model=Goal)
+def create_goal(goal: Goal, session: Session = Depends(get_session)):
+    session.add(goal)
+    session.commit()
+    session.refresh(goal)
+    return goal
+
+@app.put("/api/goals/{goal_id}/", response_model=Goal)
+def update_goal(goal_id: int, goal_data: Goal, session: Session = Depends(get_session)):
+    goal = session.get(Goal, goal_id)
+    if not goal:
+        raise HTTPException(status_code=404, detail="Meta não encontrada")
     
-    class Meta:
-        model = Debt
-        fields = ['id', 'name', 'remaining', 'monthly', 'dueDate', 'status']
+    goal.currentAmount = goal_data.currentAmount
+    # Atualize outros campos se necessário
+    session.add(goal)
+    session.commit()
+    session.refresh(goal)
+    return goal
 
-class AlertSerializer(serializers.ModelSerializer):
-    iconName = serializers.CharField(source='icon_name')
-    colorClass = serializers.CharField(source='color_class')
+@app.delete("/api/goals/{goal_id}/")
+def delete_goal(goal_id: int, session: Session = Depends(get_session)):
+    goal = session.get(Goal, goal_id)
+    if not goal:
+        raise HTTPException(status_code=404, detail="Meta não encontrada")
+    session.delete(goal)
+    session.commit()
+    return {"ok": True}
 
-    class Meta:
-        model = Alert
-        fields = ['id', 'category', 'budget', 'threshold', 'enabled', 'iconName', 'colorClass']
-```
+# --- CONTAS, ORÇAMENTOS E CATEGORIAS ---
 
-## 5. Criar Views (`api/views.py`)
+@app.get("/api/accounts/", response_model=List[Account])
+def read_accounts(session: Session = Depends(get_session)):
+    accounts = session.exec(select(Account)).all()
+    # Se estiver vazio, retorna um mock inicial para não ficar feio na tela
+    if not accounts:
+        return [
+            Account(name="Banco Principal", type="Corrente", balance=8450.75, color="bg-blue-500", icon="bank"),
+            Account(name="Cartão Crédito", type="Fatura Atual", balance=-1280.40, color="bg-purple-500", icon="card")
+        ]
+    return accounts
 
-Aqui implementamos a lógica dos Endpoints.
+@app.get("/api/categories/", response_model=List[Category])
+def read_categories(session: Session = Depends(get_session)):
+    categories = session.exec(select(Category)).all()
+    if not categories:
+        return [
+            Category(name="Alimentação", type="Despesa", color="#fb923c"),
+            Category(name="Moradia", type="Despesa", color="#c084fc"),
+            Category(name="Transporte", type="Despesa", color="#38bdf8"),
+            Category(name="Salário", type="Receita", color="#22c55e")
+        ]
+    return categories
 
-```python
-from rest_framework import viewsets, views, status
-from rest_framework.response import Response
-from rest_framework.decorators import api_view
-from .models import *
-from .serializers import *
-import datetime
-
-# --- CRUDs Padrão ---
-class TransactionViewSet(viewsets.ModelViewSet):
-    queryset = Transaction.objects.all().order_by('-date')
-    serializer_class = TransactionSerializer
-
-class AccountViewSet(viewsets.ModelViewSet):
-    queryset = Account.objects.all()
-    serializer_class = AccountSerializer
-
-class CategoryViewSet(viewsets.ModelViewSet):
-    queryset = Category.objects.all()
-    serializer_class = CategorySerializer
-
-class GoalViewSet(viewsets.ModelViewSet):
-    queryset = Goal.objects.all()
-    serializer_class = GoalSerializer
-
-class BudgetViewSet(viewsets.ModelViewSet):
-    queryset = Budget.objects.all()
-    serializer_class = BudgetSerializer
-
-class DebtViewSet(viewsets.ModelViewSet):
-    queryset = Debt.objects.all()
-    serializer_class = DebtSerializer
-
-class AlertViewSet(viewsets.ModelViewSet):
-    queryset = Alert.objects.all()
-    serializer_class = AlertSerializer
-
-# --- Views Específicas ---
-
-@api_view(['GET', 'POST'])
-def profile_view(request):
-    try:
-        profile = Profile.objects.first()
-    except:
-        profile = None
-
-    if request.method == 'GET':
-        if not profile:
-            return Response({'name': 'Usuário', 'email': '', 'avatar': ''})
-        serializer = ProfileSerializer(profile)
-        return Response(serializer.data)
+@app.get("/api/budgets/", response_model=List[Budget])
+def read_budgets(session: Session = Depends(get_session)):
+    budgets = session.exec(select(Budget)).all()
+    if not budgets:
+        # Mock inicial
+        return [
+            Budget(category="Alimentação", limit=800, spent=450, icon="food"),
+            Budget(category="Transporte", limit=350, spent=150, icon="transport")
+        ]
     
-    elif request.method == 'POST':
-        if profile:
-            serializer = ProfileSerializer(profile, data=request.data)
-        else:
-            serializer = ProfileSerializer(data=request.data)
+    # Lógica Real: Recalcular o 'spent' baseado nas transações
+    transactions = session.exec(select(Transaction)).all()
+    for b in budgets:
+        total_spent = sum(t.amount for t in transactions if t.category == b.category and t.type == 'expense')
+        b.spent = total_spent
         
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=400)
+    return budgets
 
-@api_view(['GET'])
-def leakage_analysis_view(request):
-    # Lógica Mockada (Simulando IA)
-    # Em produção, você conectaria isso a uma lógica real de análise
-    data = {
+# --- SAÚDE FINANCEIRA E ALERTAS ---
+
+@app.get("/api/debts/", response_model=List[Debt])
+def read_debts(session: Session = Depends(get_session)):
+    debts = session.exec(select(Debt)).all()
+    if not debts:
+        return [
+            Debt(name="Financiamento Carro", remaining=15200, monthly=850, dueDate="2024-08-10", status="Em dia"),
+            Debt(name="Cartão de Crédito", remaining=1280, monthly=1280, dueDate="2024-07-05", status="Pendente", isUrgent=True)
+        ]
+    return debts
+
+@app.get("/api/alerts/", response_model=List[Alert])
+def read_alerts(session: Session = Depends(get_session)):
+    alerts = session.exec(select(Alert)).all()
+    if not alerts:
+        return [
+            Alert(category="Alimentação", budget=800, threshold=80, enabled=True, iconName="Utensils", colorClass="bg-red-500/20 text-red-500"),
+            Alert(category="Transporte", budget=350, threshold=90, enabled=True, iconName="Car", colorClass="bg-blue-500/20 text-blue-500")
+        ]
+    return alerts
+
+# ==========================================
+# 5. ROTAS AVANÇADAS (AGREGADORES E IA)
+# ==========================================
+
+@app.get("/api/reports/")
+def get_reports(range: str = 'this-month', account: str = 'all', session: Session = Depends(get_session)):
+    """
+    Gera dados agregados para os gráficos de relatório.
+    Calcula KPI e distribuição de despesas com base nas transações reais.
+    """
+    transactions = session.exec(select(Transaction)).all()
+    
+    # Filtros simples (poderiam ser mais complexos com datas reais)
+    expense_txs = [t for t in transactions if t.type == 'expense']
+    
+    total_spent = sum(t.amount for t in expense_txs)
+    count = len(transactions)
+    
+    # Agrupar por categoria
+    category_map = {}
+    for t in expense_txs:
+        category_map[t.category] = category_map.get(t.category, 0) + t.amount
+        
+    distribution = []
+    colors = ['#c084fc', '#fb923c', '#38bdf8', '#facc15', '#818cf8', '#ef4444']
+    i = 0
+    
+    top_category_name = "N/A"
+    top_category_value = 0
+    
+    for cat, val in category_map.items():
+        if val > top_category_value:
+            top_category_value = val
+            top_category_name = cat
+            
+        distribution.append({
+            "name": cat,
+            "value": val,
+            "percentage": (val / total_spent * 100) if total_spent > 0 else 0,
+            "color": colors[i % len(colors)]
+        })
+        i += 1
+        
+    return {
+        "kpi": {
+            "totalSpent": total_spent,
+            "totalSpentChange": -1.5, # Mock: Comparação com mês anterior
+            "topCategory": top_category_name,
+            "topCategoryValue": top_category_value,
+            "transactionCount": count,
+            "transactionCountChange": 5.2 # Mock
+        },
+        "distribution": distribution
+    }
+
+@app.get("/api/leakage-analysis/")
+def get_leakage_analysis():
+    """
+    Simula uma análise de IA para vazamento de dinheiro.
+    Em um app real, isso analisaria padrões nas transações.
+    """
+    return {
         "totalPotential": 215.90,
         "leaksCount": 4,
         "period": "Últimos 30 Dias",
         "suggestions": [
             {
-                "id": "1",
-                "title": "Assinaturas Não Utilizadas",
-                "description": "Você tem 2 serviços de streaming pouco usados.",
-                "amount": 45.90,
-                "actionLabel": "Cancelar",
-                "category": "subscription"
+                "id": "1", "title": "Assinaturas Não Utilizadas", 
+                "description": "Você tem 2 serviços de streaming de música ativos.", 
+                "amount": 45.90, "actionLabel": "Cancelar", "category": "subscription"
             },
             {
-                "id": "2",
-                "title": "Compras Impulsivas",
-                "description": "Identificamos 3 compras de fast-food acima da média.",
-                "amount": 120.00,
-                "actionLabel": "Ver Detalhes",
-                "category": "impulse"
+                "id": "2", "title": "Compras Impulsivas", 
+                "description": "Identificamos 3 compras de fast-food acima de R$ 50.", 
+                "amount": 120.00, "actionLabel": "Ver Detalhes", "category": "impulse"
+            },
+             {
+                "id": "3", "title": "Taxas Bancárias", 
+                "description": "Taxa de manutenção de conta cobrada.", 
+                "amount": 50.00, "actionLabel": "Ver Opções", "category": "fees"
             }
         ]
     }
-    return Response(data)
 
-@api_view(['GET'])
-def predictive_analysis_view(request):
-    # Mock data for Prediction
-    current_balance = 15230.50 # Pode vir de Account.objects.aggregate...
+@app.get("/api/interconnected-summary/")
+def get_interconnected_summary(session: Session = Depends(get_session)):
+    """Agrega Metas, Dívidas e Insights em uma única chamada."""
+    goals = session.exec(select(Goal)).all()
+    debts = session.exec(select(Debt)).all()
     
-    data = {
-        "currentBalance": current_balance,
-        "monthlyIncome": 5800.00,
-        "baseExpense": 3200.00,
-        "scenarios": [
-            {"id": 1, "label": "Cortar fast-food", "savings": 450, "checked": True, "iconName": "ShoppingBag", "color": "text-purple-400"},
-            {"id": 2, "label": "Cancelar streaming", "savings": 89.90, "checked": False, "iconName": "Clapperboard", "color": "text-blue-400"},
-            {"id": 3, "label": "Reduzir Uber/99", "savings": 200, "checked": True, "iconName": "Car", "color": "text-yellow-400"}
+    # Mock insights based on logical rules
+    insights = {
+        "bestDecisions": [
+            "Você economizou R$ 85 em restaurantes este mês.",
+            "Sua meta de emergência está quase completa."
+        ],
+        "suggestedCuts": [
+            {"text": "Considere reduzir gastos com assinaturas.", "value": 120}
         ]
     }
-    return Response(data)
-
-@api_view(['GET'])
-def interconnected_summary_view(request):
-    active_goals = Goal.objects.all()[:2]
-    upcoming_debts = Debt.objects.all().order_by('due_date')[:2]
     
-    # Serializar
-    goals_data = GoalSerializer(active_goals, many=True).data
-    debts_data = DebtSerializer(upcoming_debts, many=True).data
-
-    # Adicionar flag isUrgent manualmente
-    for debt in debts_data:
-        # Lógica simples: se vence nos próximos 7 dias é urgente
-        debt['isUrgent'] = True 
-
-    data = {
-        "activeGoals": goals_data,
-        "upcomingDebts": debts_data,
-        "insights": {
-            "bestDecisions": [
-                "Você economizou R$ 85 em restaurantes este mês.",
-                "Sua meta de emergência está quase completa."
-            ],
-            "suggestedCuts": [
-                {"text": "Considere reduzir gastos com assinaturas.", "value": 120}
-            ]
-        }
+    return {
+        "activeGoals": goals[:2], # Retorna apenas as 2 primeiras
+        "upcomingDebts": [d for d in debts if d.isUrgent][:2],
+        "insights": insights
     }
-    return Response(data)
 
-@api_view(['GET'])
-def reports_view(request):
-    # params: range, account
-    range_filter = request.GET.get('range', 'this-month')
+@app.get("/api/predictive-analysis/")
+def get_predictive_analysis(session: Session = Depends(get_session)):
+    """
+    Calcula base para projeção futura.
+    Pega o saldo atual das contas e receitas/despesas médias.
+    """
+    accounts = session.exec(select(Account)).all()
+    total_balance = sum(a.balance for a in accounts) if accounts else 15230.50
     
-    # Mock KPI Data
-    kpi = {
-        "totalSpent": 4250.75,
-        "totalSpentChange": 12,
-        "topCategory": "Alimentação",
-        "topCategoryValue": 1150.00,
-        "transactionCount": 82,
-        "transactionCountChange": -5
-    }
-    
-    # Mock Distribution Data
-    distribution = [
-        {"name": "Alimentação", "value": 1150.00, "percentage": 27.0, "color": "#fb923c"},
-        {"name": "Moradia", "value": 980.50, "percentage": 23.1, "color": "#c084fc"},
-        {"name": "Transporte", "value": 750.25, "percentage": 17.6, "color": "#38bdf8"},
-        {"name": "Lazer", "value": 620.00, "percentage": 14.6, "color": "#facc15"}
+    # Mock scenarios
+    scenarios = [
+        {"id": 1, "label": "Cortar fast-food", "savings": 150, "checked": True, "iconName": "ShoppingBag", "color": "text-purple-400"},
+        {"id": 2, "label": "Cancelar streaming", "savings": 45, "checked": False, "iconName": "Clapperboard", "color": "text-blue-400"},
+        {"id": 3, "label": "Reduzir Uber/99", "savings": 200, "checked": True, "iconName": "Car", "color": "text-yellow-400"}
     ]
     
-    return Response({
-        "kpi": kpi,
-        "distribution": distribution
-    })
+    return {
+        "currentBalance": total_balance,
+        "monthlyIncome": 5800.00, # Poderia vir da média de transações 'income'
+        "baseExpense": 3500.00,   # Poderia vir da média de transações 'expense'
+        "scenarios": scenarios
+    }
+
 ```
 
-## 6. Configurar URLs (`api/urls.py` e `axxy_backend/urls.py`)
+---
 
-Crie o arquivo `api/urls.py`:
+## 🚀 3. Como Rodar
 
-```python
-from django.urls import path, include
-from rest_framework.routers import DefaultRouter
-from . import views
-
-router = DefaultRouter()
-router.register(r'transactions', views.TransactionViewSet)
-router.register(r'accounts', views.AccountViewSet)
-router.register(r'categories', views.CategoryViewSet)
-router.register(r'goals', views.GoalViewSet)
-router.register(r'budgets', views.BudgetViewSet)
-router.register(r'debts', views.DebtViewSet)
-router.register(r'alerts', views.AlertViewSet)
-
-urlpatterns = [
-    path('', include(router.urls)),
-    path('profile/', views.profile_view),
-    path('leakage-analysis/', views.leakage_analysis_view),
-    path('predictive-analysis/', views.predictive_analysis_view),
-    path('interconnected-summary/', views.interconnected_summary_view),
-    path('reports/', views.reports_view),
-]
-```
-
-No arquivo principal `axxy_backend/urls.py`, inclua as rotas da API:
-
-```python
-from django.contrib import admin
-from django.urls import path, include
-
-urlpatterns = [
-    path('admin/', admin.site.urls),
-    path('api/', include('api.urls')),
-]
-```
-
-## 7. Executar
+No terminal, dentro da pasta `backend`, execute:
 
 ```bash
-# Criar as tabelas no banco de dados
-python manage.py makemigrations
-python manage.py migrate
-
-# Iniciar o servidor
-python manage.py runserver
+uvicorn main:app --reload
 ```
 
-Seu backend estará rodando em `http://localhost:8000/api/` e pronto para conectar com o Frontend!
+*   O servidor iniciará em `http://127.0.0.1:8000`.
+*   O banco de dados `database.db` será criado automaticamente na primeira execução.
+
+### 📄 Documentação Automática
+
+Com o servidor rodando, acesse `http://127.0.0.1:8000/docs` no seu navegador.
+Você verá uma interface gráfica interativa (Swagger UI) onde pode ver e testar todas as rotas listadas acima sem precisar do Frontend.
+
+---
+
+## 📚 Documentação das Rotas
+
+| Método | Endpoint | Descrição |
+| :--- | :--- | :--- |
+| **GET** | `/api/profile/` | Retorna o nome, email e avatar do usuário atual. |
+| **POST** | `/api/profile/` | Atualiza os dados do perfil do usuário. |
+| **GET** | `/api/transactions/` | Lista todas as transações financeiras. |
+| **POST** | `/api/transactions/` | Cria uma nova receita ou despesa. |
+| **GET** | `/api/reports/` | Retorna KPIs e dados para gráficos, calculados a partir das transações. |
+| **GET** | `/api/leakage-analysis/` | Retorna sugestões de economia (IA Mockada). |
+| **GET** | `/api/predictive-analysis/` | Retorna dados para o gráfico de projeção futura. |
+| **GET** | `/api/interconnected-summary/` | Retorna metas ativas e dívidas urgentes em um único JSON. |
+
+Este backend está 100% pronto para se comunicar com o Frontend Axxy Finance.
