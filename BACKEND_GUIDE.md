@@ -181,7 +181,6 @@ def update_profile(profile_data: UserProfile, session: Session = Depends(get_ses
 @app.get("/api/transactions/", response_model=List[Transaction])
 def read_transactions(session: Session = Depends(get_session)):
     """Lista todas as transações, ordenadas da mais recente para a mais antiga."""
-    # Na prática, você adicionaria paginação aqui.
     transactions = session.exec(select(Transaction).order_by(Transaction.id.desc())).all()
     return transactions
 
@@ -192,6 +191,16 @@ def create_transaction(transaction: Transaction, session: Session = Depends(get_
     session.commit()
     session.refresh(transaction)
     return transaction
+
+@app.delete("/api/transactions/{transaction_id}/")
+def delete_transaction(transaction_id: int, session: Session = Depends(get_session)):
+    """Deleta uma transação pelo ID."""
+    transaction = session.get(Transaction, transaction_id)
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transação não encontrada")
+    session.delete(transaction)
+    session.commit()
+    return {"ok": True}
 
 # --- METAS (GOALS) ---
 
@@ -453,6 +462,7 @@ Você verá uma interface gráfica interativa (Swagger UI) onde pode ver e testa
 | **POST** | `/api/profile/` | Atualiza os dados do perfil do usuário. |
 | **GET** | `/api/transactions/` | Lista todas as transações financeiras. |
 | **POST** | `/api/transactions/` | Cria uma nova receita ou despesa. |
+| **DELETE** | `/api/transactions/{id}` | Deleta uma transação específica. |
 | **GET** | `/api/reports/` | Retorna KPIs e dados para gráficos, calculados a partir das transações. |
 | **GET** | `/api/leakage-analysis/` | Retorna sugestões de economia (IA Mockada). |
 | **GET** | `/api/predictive-analysis/` | Retorna dados para o gráfico de projeção futura. |

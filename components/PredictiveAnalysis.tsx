@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { TrendingUp, ShoppingBag, Clapperboard, Car, Plus, Lightbulb, AlertCircle } from 'lucide-react';
-import { djangoService } from '../services/djangoService';
+import { apiService } from '../services/apiService';
 import { PredictionBaseData, PredictionScenario } from '../types';
 
 export const PredictiveAnalysis: React.FC = () => {
@@ -16,7 +16,7 @@ export const PredictiveAnalysis: React.FC = () => {
   const [scenarios, setScenarios] = useState<PredictionScenario[]>([]);
 
   useEffect(() => {
-    djangoService.getPredictiveAnalysis()
+    apiService.getPredictiveAnalysis()
         .then(data => {
             setBaseData(data);
             setScenarios(data.scenarios); // Initialize scenarios from backend

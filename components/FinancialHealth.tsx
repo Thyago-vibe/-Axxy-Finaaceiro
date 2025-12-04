@@ -1,14 +1,15 @@
+
 import React, { useState, useEffect } from 'react';
 import { Plus, PenLine, Trash2 } from 'lucide-react';
 import { Debt } from '../types';
-import { djangoService } from '../services/djangoService';
+import { apiService } from '../services/apiService';
 
 export const FinancialHealth: React.FC = () => {
   const [debts, setDebts] = useState<Debt[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    djangoService.getDebts()
+    apiService.getDebts()
         .then(setDebts)
         .catch(console.error)
         .finally(() => setLoading(false));

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
@@ -15,7 +16,7 @@ import { InterconnectedSummary } from './components/InterconnectedSummary';
 import { PredictiveAnalysis } from './components/PredictiveAnalysis';
 import { Transaction, UserProfile } from './types';
 import { Bell, Menu } from 'lucide-react';
-import { djangoService } from './services/djangoService';
+import { apiService } from './services/apiService';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState('dashboard');
@@ -31,8 +32,8 @@ const App: React.FC = () => {
       setIsLoading(true);
       try {
         const [profileData, transactionsData] = await Promise.all([
-           djangoService.getProfile().catch(() => ({ name: 'Convidado', email: '', avatar: '' } as UserProfile)),
-           djangoService.getTransactions().catch(() => [])
+           apiService.getProfile().catch(() => ({ name: 'Convidado', email: '', avatar: '' } as UserProfile)),
+           apiService.getTransactions().catch(() => [])
         ]);
 
         setUserProfile(profileData);
@@ -49,7 +50,7 @@ const App: React.FC = () => {
 
   const handleUpdateProfile = async (newProfile: UserProfile) => {
     try {
-        const updated = await djangoService.updateProfile(newProfile);
+        const updated = await apiService.updateProfile(newProfile);
         setUserProfile(updated);
     } catch (e) {
         console.error("Failed to update profile", e);
@@ -58,13 +59,24 @@ const App: React.FC = () => {
 
   const handleAddTransaction = async (newTransaction: Transaction) => {
     try {
-        const created = await djangoService.createTransaction(newTransaction);
+        const created = await apiService.createTransaction(newTransaction);
         if (created) {
             setTransactions(prev => [created, ...prev]);
-            setCurrentView('dashboard');
+            // Don't switch view, stay on list to see result
         }
     } catch (e) {
         console.error("Failed to create transaction", e);
+    }
+  };
+
+  const handleDeleteTransaction = async (id: string) => {
+    if (confirm("Tem certeza que deseja excluir esta transação?")) {
+        try {
+            await apiService.deleteTransaction(id);
+            setTransactions(prev => prev.filter(t => t.id !== id));
+        } catch (e) {
+            console.error("Failed to delete transaction", e);
+        }
     }
   };
 
@@ -84,7 +96,11 @@ const App: React.FC = () => {
       case 'interconnected-summary':
         return <InterconnectedSummary setView={setCurrentView} />;
       case 'transactions':
-        return <Transactions transactions={transactions} onAddTransaction={handleAddTransaction} />;
+        return <Transactions 
+                  transactions={transactions} 
+                  onAddTransaction={handleAddTransaction}
+                  onDeleteTransaction={handleDeleteTransaction}
+               />;
       case 'budgets':
         return <Budgets />;
       case 'accounts':

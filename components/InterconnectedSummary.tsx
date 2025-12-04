@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Share2, CheckCircle2, Scissors, AlertCircle, Hourglass, Trophy, TrendingUp } from 'lucide-react';
-import { djangoService } from '../services/djangoService';
+import { apiService } from '../services/apiService';
 import { InterconnectedSummaryData } from '../types';
 
 interface InterconnectedSummaryProps {
@@ -13,7 +13,7 @@ export const InterconnectedSummary: React.FC<InterconnectedSummaryProps> = ({ se
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    djangoService.getInterconnectedSummary()
+    apiService.getInterconnectedSummary()
         .then(setData)
         .catch(err => console.error("Failed to load summary:", err))
         .finally(() => setLoading(false));

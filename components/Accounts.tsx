@@ -1,14 +1,15 @@
+
 import React, { useState, useEffect } from 'react';
 import { MoreVertical, Plus, Landmark, CreditCard, PiggyBank, Wallet } from 'lucide-react';
 import { Account } from '../types';
-import { djangoService } from '../services/djangoService';
+import { apiService } from '../services/apiService';
 
 export const Accounts: React.FC = () => {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-      djangoService.getAccounts()
+      apiService.getAccounts()
         .then(setAccounts)
         .catch(console.error)
         .finally(() => setLoading(false));

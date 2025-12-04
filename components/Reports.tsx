@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Printer, Download, ArrowUpRight, ArrowDownRight, ChevronDown } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { djangoService } from '../services/djangoService';
+import { apiService } from '../services/apiService';
 import { ReportData } from '../types';
 
 export const Reports: React.FC = () => {
@@ -15,7 +15,7 @@ export const Reports: React.FC = () => {
 
   const fetchReports = () => {
       setLoading(true);
-      djangoService.getReports(dateRange, selectedAccount)
+      apiService.getReports(dateRange, selectedAccount)
         .then(setData)
         .catch(err => console.error("Failed to load reports:", err))
         .finally(() => setLoading(false));

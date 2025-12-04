@@ -1,3 +1,4 @@
+
 import React, { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { ArrowUpRight, ArrowDownRight } from 'lucide-react';
@@ -15,37 +16,65 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions }) => {
     let inc = 0;
     let exp = 0;
     const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
 
     transactions.forEach(t => {
       const amount = t.amount;
-      const tDate = new Date(t.date); // Assuming ISO string from backend
+      // Handle date parsing safely from YYYY-MM-DD
+      const [y, m] = t.date.split('-').map(Number);
+      const tMonth = m - 1; // 0-indexed
+      const tYear = y;
       
       if (t.type === 'income') {
         bal += amount;
-        if (tDate.getMonth() === currentMonth) inc += amount;
+        if (tMonth === currentMonth && tYear === currentYear) inc += amount;
       } else {
         bal -= amount;
-        if (tDate.getMonth() === currentMonth) exp += amount;
+        if (tMonth === currentMonth && tYear === currentYear) exp += amount;
       }
     });
 
     return { balance: bal, incomeMonth: inc, expenseMonth: exp };
   }, [transactions]);
 
-  // Dynamic Calculation: Monthly Flow (Bar Chart)
+  // Dynamic Calculation: Monthly Flow (Bar Chart) - Last 6 Months
   const dataFlow = useMemo(() => {
-    // This assumes backend returns formatted dates or ISODates. 
-    // Grouping by last 6 months logic would go here. 
-    // For simplicity, we assume the backend might return pre-aggregated stats 
-    // or we map transactions to a simple view. 
-    // Here we return an empty structure if no data, or map basic aggregation.
-    if (transactions.length === 0) return [];
+    const today = new Date();
+    const months = [];
     
-    // Simple mock aggregation logic for visual purposes if no real historical data in transactions
-    return [
-       { name: 'Atual', income: incomeMonth, expense: expenseMonth }
-    ];
-  }, [incomeMonth, expenseMonth, transactions]);
+    // Initialize last 6 months buckets
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+      const monthShort = d.toLocaleDateString('pt-BR', { month: 'short' });
+      // Format: "Jan", "Fev", etc.
+      const name = monthShort.replace('.', '').charAt(0).toUpperCase() + monthShort.replace('.', '').slice(1);
+      
+      months.push({
+        monthIdx: d.getMonth(),
+        year: d.getFullYear(),
+        name,
+        income: 0,
+        expense: 0
+      });
+    }
+
+    transactions.forEach(t => {
+      const [y, m] = t.date.split('-').map(Number);
+      const tMonth = m - 1; 
+      const tYear = y;
+
+      const bucket = months.find(item => item.monthIdx === tMonth && item.year === tYear);
+      if (bucket) {
+        if (t.type === 'income') {
+          bucket.income += t.amount;
+        } else {
+          bucket.expense += t.amount;
+        }
+      }
+    });
+
+    return months.map(({ name, income, expense }) => ({ name, income, expense }));
+  }, [transactions]);
 
   // Dynamic Calculation: Category Distribution (Pie Chart)
   const dataDistribution = useMemo(() => {
@@ -99,25 +128,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions }) => {
         {/* Bar Chart */}
         <div className="lg:col-span-2 bg-axxy-card p-6 rounded-3xl border border-axxy-border">
           <h3 className="text-lg font-semibold text-white mb-1">Fluxo de Caixa</h3>
-          <p className="text-sm text-gray-500 mb-6">Receitas vs Despesas</p>
+          <p className="text-sm text-gray-500 mb-6">Receitas vs Despesas (Últimos 6 Meses)</p>
           <div className="h-64 w-full">
-            {dataFlow.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={dataFlow} barGap={8}>
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#6b7280', fontSize: 12}} dy={10} />
-                    <YAxis axisLine={false} tickLine={false} tick={{fill: '#6b7280', fontSize: 12}} />
-                    <Tooltip 
-                    cursor={{fill: 'rgba(255,255,255,0.05)'}}
-                    contentStyle={{backgroundColor: '#15221c', border: '1px solid #1e332a', borderRadius: '12px'}}
-                    itemStyle={{color: '#fff'}}
-                    />
-                    <Bar dataKey="income" fill="#22c55e" radius={[4, 4, 0, 0]} barSize={40} />
-                    <Bar dataKey="expense" fill="#ef4444" radius={[4, 4, 0, 0]} barSize={40} />
-                </BarChart>
-                </ResponsiveContainer>
-            ) : (
-                <div className="h-full flex items-center justify-center text-gray-500">Sem dados suficientes</div>
-            )}
+            {/* Always render chart structure even if data is 0 to show timeline */}
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={dataFlow} barGap={8}>
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#6b7280', fontSize: 12}} dy={10} />
+                <YAxis axisLine={false} tickLine={false} tick={{fill: '#6b7280', fontSize: 12}} />
+                <Tooltip 
+                  cursor={{fill: 'rgba(255,255,255,0.05)'}}
+                  contentStyle={{backgroundColor: '#15221c', border: '1px solid #1e332a', borderRadius: '12px'}}
+                  itemStyle={{color: '#fff'}}
+                  formatter={(value: number) => [`R$ ${value.toFixed(2)}`, '']}
+                />
+                <Bar dataKey="income" name="Receitas" fill="#22c55e" radius={[4, 4, 0, 0]} barSize={20} />
+                <Bar dataKey="expense" name="Despesas" fill="#ef4444" radius={[4, 4, 0, 0]} barSize={20} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </div>
 
@@ -179,7 +206,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions }) => {
             <tbody className="text-sm">
               {transactions.slice(0, 5).map((t) => (
                 <tr key={t.id} className="border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors">
-                  <td className="py-4 pl-2 text-gray-400">{t.date}</td>
+                  <td className="py-4 pl-2 text-gray-400">
+                    {t.date ? new Date(t.date).toLocaleDateString('pt-BR') : '-'}
+                  </td>
                   <td className="py-4 font-medium text-white">{t.description}</td>
                   <td className="py-4"><span className="bg-white/5 px-2 py-1 rounded text-xs">{t.category}</span></td>
                   <td className={`py-4 text-right pr-2 font-medium ${t.type === 'income' ? 'text-green-500' : 'text-red-500'}`}>

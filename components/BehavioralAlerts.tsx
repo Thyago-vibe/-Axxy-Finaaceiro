@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
 import { Settings, X, Smartphone, Mail, MessageSquare, AlertCircle } from 'lucide-react';
 import { Alert } from '../types';
-import { djangoService } from '../services/djangoService';
+import { apiService } from '../services/apiService';
 
 export const BehavioralAlerts: React.FC = () => {
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -9,7 +10,7 @@ export const BehavioralAlerts: React.FC = () => {
   const [showConfigModal, setShowConfigModal] = useState(false);
 
   useEffect(() => {
-    djangoService.getAlerts()
+    apiService.getAlerts()
         .then(setAlerts)
         .catch(console.error)
         .finally(() => setLoading(false));
@@ -18,7 +19,7 @@ export const BehavioralAlerts: React.FC = () => {
   const toggleAlert = async (alert: Alert) => {
       const updated = { ...alert, enabled: !alert.enabled };
       try {
-          const res = await djangoService.updateAlert(updated);
+          const res = await apiService.updateAlert(updated);
           setAlerts(alerts.map(a => a.id === alert.id ? res : a));
       } catch (e) {
           console.error(e);

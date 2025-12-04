@@ -5,10 +5,9 @@ const API_URL = 'http://localhost:8000/api';
 
 const headers = {
   'Content-Type': 'application/json',
-  // Add authentication headers here if needed (e.g., Authorization: `Bearer ${token}`)
 };
 
-export const djangoService = {
+export const apiService = {
   // --- Profile ---
   getProfile: async (): Promise<UserProfile> => {
     const res = await fetch(`${API_URL}/profile/`);
@@ -17,7 +16,7 @@ export const djangoService = {
   },
   updateProfile: async (profile: UserProfile): Promise<UserProfile> => {
     const res = await fetch(`${API_URL}/profile/`, {
-      method: 'POST', // or PUT
+      method: 'POST', 
       headers,
       body: JSON.stringify(profile),
     });
@@ -126,7 +125,6 @@ export const djangoService = {
 
   // --- Reports ---
   getReports: async (range: string, account: string): Promise<ReportData> => {
-    // Construct query params
     const params = new URLSearchParams({ range, account });
     const res = await fetch(`${API_URL}/reports/?${params}`);
     if (!res.ok) throw new Error('Failed to fetch reports');

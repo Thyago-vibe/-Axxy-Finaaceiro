@@ -1,14 +1,15 @@
+
 import React, { useState, useEffect } from 'react';
 import { Plus, PenLine, Trash2, Utensils, Car, Gamepad2, Home, AlertCircle } from 'lucide-react';
 import { Budget } from '../types';
-import { djangoService } from '../services/djangoService';
+import { apiService } from '../services/apiService';
 
 export const Budgets: React.FC = () => {
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-      djangoService.getBudgets()
+      apiService.getBudgets()
         .then(setBudgets)
         .catch(console.error)
         .finally(() => setLoading(false));

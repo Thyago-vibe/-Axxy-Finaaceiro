@@ -1,14 +1,15 @@
+
 import React, { useState, useEffect } from 'react';
 import { Search, PenLine, Trash2, PlusCircle } from 'lucide-react';
 import { Category } from '../types';
-import { djangoService } from '../services/djangoService';
+import { apiService } from '../services/apiService';
 
 export const Categories: React.FC = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    djangoService.getCategories()
+    apiService.getCategories()
         .then(setCategories)
         .catch(console.error)
         .finally(() => setLoading(false));

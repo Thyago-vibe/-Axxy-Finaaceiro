@@ -1,8 +1,9 @@
+
 import React, { useState, useEffect } from 'react';
 import { PlusCircle, Lightbulb, X } from 'lucide-react';
 import { Goal } from '../types';
 import { getSmartGoalAdvice } from '../services/geminiService';
-import { djangoService } from '../services/djangoService';
+import { apiService } from '../services/apiService';
 
 export const Goals: React.FC = () => {
   const [goals, setGoals] = useState<Goal[]>([]);
@@ -18,7 +19,7 @@ export const Goals: React.FC = () => {
     const fetchGoals = async () => {
        setLoading(true);
        try {
-           const data = await djangoService.getGoals();
+           const data = await apiService.getGoals();
            setGoals(data);
        } catch(e) {
            console.error("Failed to fetch goals", e);
@@ -49,7 +50,7 @@ export const Goals: React.FC = () => {
     };
 
     try {
-        const created = await djangoService.createGoal(newGoalData);
+        const created = await apiService.createGoal(newGoalData);
         setGoals([...goals, created]);
         setNewGoalName('');
         setNewGoalAmount('');
@@ -62,7 +63,7 @@ export const Goals: React.FC = () => {
   const handleDeleteGoal = async (id: string) => {
     if (confirm('Tem certeza que deseja excluir esta meta?')) {
         try {
-            const success = await djangoService.deleteGoal(id);
+            const success = await apiService.deleteGoal(id);
             if (success) setGoals(goals.filter(g => g.id !== id));
         } catch (e) {
             console.error("Error deleting goal", e);
@@ -75,7 +76,7 @@ export const Goals: React.FC = () => {
       // For now, we manually increment via API
       const updatedGoal = { ...goal, currentAmount: goal.currentAmount + 100 };
       try {
-          const res = await djangoService.updateGoal(updatedGoal);
+          const res = await apiService.updateGoal(updatedGoal);
           setGoals(goals.map(g => g.id === goal.id ? res : g));
       } catch (e) {
           console.error(e);

@@ -1,6 +1,7 @@
+
 import React, { useEffect, useState } from 'react';
 import { PiggyBank, Droplets, Calendar, RotateCw, Play, ShoppingBag, Landmark, AlertCircle } from 'lucide-react';
-import { djangoService } from '../services/djangoService';
+import { apiService } from '../services/apiService';
 import { LeakageAnalysis } from '../types';
 
 export const AssistedDecision: React.FC = () => {
@@ -9,7 +10,7 @@ export const AssistedDecision: React.FC = () => {
 
   const fetchData = () => {
       setLoading(true);
-      djangoService.getLeakageAnalysis()
+      apiService.getLeakageAnalysis()
         .then(setData)
         .catch(console.error)
         .finally(() => setLoading(false));
