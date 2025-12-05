@@ -265,13 +265,6 @@ def create_category(category: Category, session: Session = Depends(get_session))
 @app.get("/api/budgets/", response_model=List[Budget])
 def read_budgets(session: Session = Depends(get_session)):
     budgets = session.exec(select(Budget)).all()
-    if not budgets:
-        # Mock inicial
-        return [
-            Budget(category="Alimentação", limit=800, spent=450, icon="food"),
-            Budget(category="Transporte", limit=350, spent=150, icon="transport")
-        ]
-    
     # Lógica Real: Recalcular o 'spent' baseado nas transações
     transactions = session.exec(select(Transaction)).all()
     for b in budgets:
@@ -279,6 +272,42 @@ def read_budgets(session: Session = Depends(get_session)):
         b.spent = total_spent
         
     return budgets
+
+@app.post("/api/budgets/", response_model=Budget)
+def create_budget(budget: Budget, session: Session = Depends(get_session)):
+    """Cria um novo orçamento."""
+    session.add(budget)
+    session.commit()
+    session.refresh(budget)
+    return budget
+
+@app.put("/api/budgets/{budget_id}/", response_model=Budget)
+def update_budget(budget_id: int, budget_data: Budget, session: Session = Depends(get_session)):
+    """Atualiza um orçamento existente."""
+    budget = session.get(Budget, budget_id)
+    if not budget:
+        raise HTTPException(status_code=404, detail="Orçamento não encontrado")
+    
+    budget.category = budget_data.category
+    budget.limit = budget_data.limit
+    budget.icon = budget_data.icon
+    # spent é calculado, não atualizado diretamente aqui geralmente, mas se quiser permitir ajuste manual:
+    # budget.spent = budget_data.spent 
+    
+    session.add(budget)
+    session.commit()
+    session.refresh(budget)
+    return budget
+
+@app.delete("/api/budgets/{budget_id}/")
+def delete_budget(budget_id: int, session: Session = Depends(get_session)):
+    """Deleta um orçamento."""
+    budget = session.get(Budget, budget_id)
+    if not budget:
+        raise HTTPException(status_code=404, detail="Orçamento não encontrado")
+    session.delete(budget)
+    session.commit()
+    return {"ok": True}
 
 # --- SAÚDE FINANCEIRA E ALERTAS ---
 
@@ -392,15 +421,47 @@ def get_interconnected_summary(session: Session = Depends(get_session)):
     goals = session.exec(select(Goal)).all()
     debts = session.exec(select(Debt)).all()
     
-    # Mock insights based on logical rules
+    # Dynamic Insights Logic
+    transactions = session.exec(select(Transaction)).all()
+    
+    best_decisions = []
+    suggested_cuts = []
+
+    # 1. Goal Progress Insight
+    for goal in goals:
+        if goal.current_amount >= goal.target_amount * 0.8:
+            best_decisions.append(f"Sua meta '{goal.title}' está quase completa!")
+            break # Only one goal insight
+    
+    # 2. Financial Health Insight
+    total_income = sum(t.amount for t in transactions if t.type == 'income')
+    total_expense = sum(t.amount for t in transactions if t.type == 'expense')
+    
+    if total_income > total_expense:
+        best_decisions.append("Você está gastando menos do que ganha este mês.")
+    elif total_expense > 0:
+        best_decisions.append("Atenção aos gastos excessivos.")
+
+    if not best_decisions:
+        best_decisions.append("Continue registrando suas transações para obter insights.")
+
+    # 3. Suggested Cuts (Highest Expense Category)
+    expense_by_category = {}
+    for t in transactions:
+        if t.type == 'expense':
+            expense_by_category[t.category] = expense_by_category.get(t.category, 0) + t.amount
+    
+    if expense_by_category:
+        highest_category = max(expense_by_category, key=expense_by_category.get)
+        amount = expense_by_category[highest_category]
+        suggested_cuts.append({
+            "text": f"Considere reduzir gastos em {highest_category}.",
+            "value": amount
+        })
+
     insights = {
-        "bestDecisions": [
-            "Você economizou R$ 85 em restaurantes este mês.",
-            "Sua meta de emergência está quase completa."
-        ],
-        "suggestedCuts": [
-            {"text": "Considere reduzir gastos com assinaturas.", "value": 120}
-        ]
+        "bestDecisions": best_decisions,
+        "suggestedCuts": suggested_cuts
     }
     
     return {

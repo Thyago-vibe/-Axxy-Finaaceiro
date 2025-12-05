@@ -177,7 +177,7 @@ export const Transactions: React.FC<TransactionsProps> = ({
 
       {/* Modal - New/Edit Transaction */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-start justify-center pt-24 px-4 pb-4 backdrop-blur-sm">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-24 px-4 pb-4 backdrop-blur-sm">
           <div className="bg-[#15221c] border border-[#1e332a] rounded-3xl w-full max-w-lg shadow-2xl animate-fade-in relative max-h-[80vh] overflow-y-auto">
             <button
               onClick={() => setIsModalOpen(false)}

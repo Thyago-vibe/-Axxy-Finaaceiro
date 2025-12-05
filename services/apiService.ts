@@ -82,6 +82,10 @@ export const apiService = {
     const res = await fetch(`${API_URL}/budgets/`, { method: 'POST', headers, body: JSON.stringify(b) });
     return res.json();
   },
+  updateBudget: async (b: Budget): Promise<Budget> => {
+    const res = await fetch(`${API_URL}/budgets/${b.id}/`, { method: 'PUT', headers, body: JSON.stringify(b) });
+    return res.json();
+  },
   deleteBudget: async (id: string): Promise<boolean> => {
     const res = await fetch(`${API_URL}/budgets/${id}/`, { method: 'DELETE' });
     return res.ok;
