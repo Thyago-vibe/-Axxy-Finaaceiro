@@ -54,7 +54,7 @@ export const Settings: React.FC<SettingsProps> = ({ userProfile, onUpdateProfile
     );
 
     return (
-        <div className="space-y-8 animate-fade-in max-w-4xl pb-12">
+        <div className="space-y-8 animate-fade-in max-w-4xl mx-auto pb-12">
             <div>
                 <h2 className="text-3xl font-bold text-white mb-2">Configurações</h2>
                 <p className="text-gray-400">Gerencie as configurações da sua conta e preferências do aplicativo.</p>
