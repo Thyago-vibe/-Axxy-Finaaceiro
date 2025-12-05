@@ -1,5 +1,5 @@
 export interface Transaction {
-  id: string;
+  id?: string | number;
   description: string;
   amount: number;
   type: 'income' | 'expense';
@@ -9,7 +9,7 @@ export interface Transaction {
 }
 
 export interface Account {
-  id: string;
+  id?: string | number;
   name: string;
   type: string;
   balance: number;
@@ -18,14 +18,14 @@ export interface Account {
 }
 
 export interface Category {
-  id: string; 
+  id?: string | number;
   name: string;
   type: 'Receita' | 'Despesa';
   color: string;
 }
 
 export interface Goal {
-  id: string;
+  id?: string | number;
   name: string;
   currentAmount: number;
   targetAmount: number;
@@ -35,7 +35,7 @@ export interface Goal {
 }
 
 export interface Budget {
-  id: string;
+  id?: string | number;
   category: string;
   spent: number;
   limit: number;
@@ -43,7 +43,7 @@ export interface Budget {
 }
 
 export interface Debt {
-  id: string;
+  id?: string | number;
   name: string;
   remaining: number;
   monthly: number;
@@ -53,7 +53,7 @@ export interface Debt {
 }
 
 export interface Alert {
-  id: string;
+  id?: string | number;
   category: string;
   budget: number;
   threshold: number;

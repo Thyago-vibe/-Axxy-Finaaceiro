@@ -16,7 +16,7 @@ export const apiService = {
   },
   updateProfile: async (profile: UserProfile): Promise<UserProfile> => {
     const res = await fetch(`${API_URL}/profile/`, {
-      method: 'POST', 
+      method: 'POST',
       headers,
       body: JSON.stringify(profile),
     });
@@ -37,6 +37,10 @@ export const apiService = {
     const res = await fetch(`${API_URL}/transactions/${id}/`, { method: 'DELETE' });
     return res.ok;
   },
+  updateTransaction: async (t: Transaction): Promise<Transaction> => {
+    const res = await fetch(`${API_URL}/transactions/${t.id}/`, { method: 'PUT', headers, body: JSON.stringify(t) });
+    return res.json();
+  },
 
   // --- Goals ---
   getGoals: async (): Promise<Goal[]> => {
@@ -49,8 +53,8 @@ export const apiService = {
     return res.json();
   },
   updateGoal: async (g: Goal): Promise<Goal> => {
-     const res = await fetch(`${API_URL}/goals/${g.id}/`, { method: 'PUT', headers, body: JSON.stringify(g) });
-     return res.json();
+    const res = await fetch(`${API_URL}/goals/${g.id}/`, { method: 'PUT', headers, body: JSON.stringify(g) });
+    return res.json();
   },
   deleteGoal: async (id: string): Promise<boolean> => {
     const res = await fetch(`${API_URL}/goals/${id}/`, { method: 'DELETE' });
@@ -90,8 +94,8 @@ export const apiService = {
     return res.json();
   },
   createCategory: async (c: Category): Promise<Category> => {
-     const res = await fetch(`${API_URL}/categories/`, { method: 'POST', headers, body: JSON.stringify(c) });
-     return res.json();
+    const res = await fetch(`${API_URL}/categories/`, { method: 'POST', headers, body: JSON.stringify(c) });
+    return res.json();
   },
 
   // --- Financial Health (Debts) ---
@@ -104,16 +108,16 @@ export const apiService = {
     const res = await fetch(`${API_URL}/debts/`, { method: 'POST', headers, body: JSON.stringify(d) });
     return res.json();
   },
-  
+
   // --- Alerts ---
   getAlerts: async (): Promise<Alert[]> => {
-     const res = await fetch(`${API_URL}/alerts/`);
-     if (!res.ok) return [];
-     return res.json();
+    const res = await fetch(`${API_URL}/alerts/`);
+    if (!res.ok) return [];
+    return res.json();
   },
   updateAlert: async (a: Alert): Promise<Alert> => {
-     const res = await fetch(`${API_URL}/alerts/${a.id}/`, { method: 'PUT', headers, body: JSON.stringify(a) });
-     return res.json();
+    const res = await fetch(`${API_URL}/alerts/${a.id}/`, { method: 'PUT', headers, body: JSON.stringify(a) });
+    return res.json();
   },
 
   // --- AI Leakage Analysis ---
