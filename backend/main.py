@@ -42,6 +42,7 @@ class Transaction(SQLModel, table=True):
     date: str
     category: str
     status: str # 'completed' | 'pending'
+    accountId: Optional[int] = Field(default=None, foreign_key="account.id")
 
 class Goal(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -50,6 +51,7 @@ class Goal(SQLModel, table=True):
     targetAmount: float
     deadline: str
     color: str
+    priority: str = "Média"
     imageUrl: Optional[str] = None
 
 class Budget(SQLModel, table=True):
@@ -72,6 +74,7 @@ class Category(SQLModel, table=True):
     name: str
     type: str
     color: str
+    icon: str = "Tag"
 
 class Debt(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -80,6 +83,7 @@ class Debt(SQLModel, table=True):
     monthly: float
     dueDate: str
     status: str
+    category: str = "Outros"
     isUrgent: bool = False
 
 class Alert(SQLModel, table=True):
@@ -188,6 +192,7 @@ def update_transaction(transaction_id: int, transaction_data: Transaction, sessi
     transaction.date = transaction_data.date
     transaction.category = transaction_data.category
     transaction.status = transaction_data.status
+    transaction.accountId = transaction_data.accountId
     
     session.add(transaction)
     session.commit()
@@ -234,24 +239,57 @@ def delete_goal(goal_id: int, session: Session = Depends(get_session)):
 @app.get("/api/accounts/", response_model=List[Account])
 def read_accounts(session: Session = Depends(get_session)):
     accounts = session.exec(select(Account)).all()
-    # Se estiver vazio, retorna um mock inicial para não ficar feio na tela
-    if not accounts:
-        return [
-            Account(name="Banco Principal", type="Corrente", balance=8450.75, color="bg-blue-500", icon="bank"),
-            Account(name="Cartão Crédito", type="Fatura Atual", balance=-1280.40, color="bg-purple-500", icon="card")
-        ]
     return accounts
+
+@app.post("/api/accounts/", response_model=Account)
+def create_account(account: Account, session: Session = Depends(get_session)):
+    session.add(account)
+    session.commit()
+    session.refresh(account)
+    return account
+
+@app.put("/api/accounts/{account_id}/", response_model=Account)
+def update_account(account_id: int, account_data: Account, session: Session = Depends(get_session)):
+    account = session.get(Account, account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Conta não encontrada")
+    
+    account.name = account_data.name
+    account.type = account_data.type
+    account.balance = account_data.balance
+    account.color = account_data.color
+    account.icon = account_data.icon
+    
+    session.add(account)
+    session.commit()
+    session.refresh(account)
+    return account
+
+@app.delete("/api/accounts/{account_id}/")
+def delete_account(account_id: int, session: Session = Depends(get_session)):
+    account = session.get(Account, account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Conta não encontrada")
+    session.delete(account)
+    session.commit()
+    return {"ok": True}
 
 @app.get("/api/categories/", response_model=List[Category])
 def read_categories(session: Session = Depends(get_session)):
     categories = session.exec(select(Category)).all()
     if not categories:
-        return [
-            Category(name="Alimentação", type="Despesa", color="#fb923c"),
-            Category(name="Moradia", type="Despesa", color="#c084fc"),
-            Category(name="Transporte", type="Despesa", color="#38bdf8"),
-            Category(name="Salário", type="Receita", color="#22c55e")
+        defaults = [
+            Category(name="Alimentação", type="Despesa", color="#fb923c", icon="Utensils"),
+            Category(name="Moradia", type="Despesa", color="#c084fc", icon="Home"),
+            Category(name="Transporte", type="Despesa", color="#38bdf8", icon="Car"),
+            Category(name="Salário", type="Receita", color="#22c55e", icon="DollarSign")
         ]
+        for cat in defaults:
+            session.add(cat)
+        session.commit()
+        for cat in defaults:
+            session.refresh(cat)
+        return defaults
     return categories
 
 @app.post("/api/categories/", response_model=Category)
@@ -261,6 +299,31 @@ def create_category(category: Category, session: Session = Depends(get_session))
     session.commit()
     session.refresh(category)
     return category
+
+@app.put("/api/categories/{category_id}/", response_model=Category)
+def update_category(category_id: int, category_data: Category, session: Session = Depends(get_session)):
+    category = session.get(Category, category_id)
+    if not category:
+        raise HTTPException(status_code=404, detail="Categoria não encontrada")
+    
+    category.name = category_data.name
+    category.type = category_data.type
+    category.color = category_data.color
+    category.icon = category_data.icon
+    
+    session.add(category)
+    session.commit()
+    session.refresh(category)
+    return category
+
+@app.delete("/api/categories/{category_id}/")
+def delete_category(category_id: int, session: Session = Depends(get_session)):
+    category = session.get(Category, category_id)
+    if not category:
+        raise HTTPException(status_code=404, detail="Categoria não encontrada")
+    session.delete(category)
+    session.commit()
+    return {"ok": True}
 
 @app.get("/api/budgets/", response_model=List[Budget])
 def read_budgets(session: Session = Depends(get_session)):
@@ -314,21 +377,46 @@ def delete_budget(budget_id: int, session: Session = Depends(get_session)):
 @app.get("/api/debts/", response_model=List[Debt])
 def read_debts(session: Session = Depends(get_session)):
     debts = session.exec(select(Debt)).all()
-    if not debts:
-        return [
-            Debt(name="Financiamento Carro", remaining=15200, monthly=850, dueDate="2024-08-10", status="Em dia"),
-            Debt(name="Cartão de Crédito", remaining=1280, monthly=1280, dueDate="2024-07-05", status="Pendente", isUrgent=True)
-        ]
     return debts
+
+@app.post("/api/debts/", response_model=Debt)
+def create_debt(debt: Debt, session: Session = Depends(get_session)):
+    session.add(debt)
+    session.commit()
+    session.refresh(debt)
+    return debt
+
+@app.put("/api/debts/{debt_id}/", response_model=Debt)
+def update_debt(debt_id: int, debt_data: Debt, session: Session = Depends(get_session)):
+    debt = session.get(Debt, debt_id)
+    if not debt:
+        raise HTTPException(status_code=404, detail="Dívida não encontrada")
+    
+    debt.name = debt_data.name
+    debt.remaining = debt_data.remaining
+    debt.monthly = debt_data.monthly
+    debt.dueDate = debt_data.dueDate
+    debt.status = debt_data.status
+    debt.category = debt_data.category
+    debt.isUrgent = debt_data.isUrgent
+    
+    session.add(debt)
+    session.commit()
+    session.refresh(debt)
+    return debt
+
+@app.delete("/api/debts/{debt_id}/")
+def delete_debt(debt_id: int, session: Session = Depends(get_session)):
+    debt = session.get(Debt, debt_id)
+    if not debt:
+        raise HTTPException(status_code=404, detail="Dívida não encontrada")
+    session.delete(debt)
+    session.commit()
+    return {"ok": True}
 
 @app.get("/api/alerts/", response_model=List[Alert])
 def read_alerts(session: Session = Depends(get_session)):
     alerts = session.exec(select(Alert)).all()
-    if not alerts:
-        return [
-            Alert(category="Alimentação", budget=800, threshold=80, enabled=True, iconName="Utensils", colorClass="bg-red-500/20 text-red-500"),
-            Alert(category="Transporte", budget=350, threshold=90, enabled=True, iconName="Car", colorClass="bg-blue-500/20 text-blue-500")
-        ]
     return alerts
 
 # ==========================================
@@ -387,32 +475,92 @@ def get_reports(range: str = 'this-month', account: str = 'all', session: Sessio
     }
 
 @app.get("/api/leakage-analysis/")
-def get_leakage_analysis():
+def get_leakage_analysis(session: Session = Depends(get_session)):
     """
-    Simula uma análise de IA para vazamento de dinheiro.
-    Em um app real, isso analisaria padrões nas transações.
+    Análise de vazamento baseada em transações reais dos últimos 30 dias.
+    Melhorada para detectar padrões por palavras-chave na descrição e categorias.
     """
+    # Data de 30 dias atrás
+    thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+    
+    # Buscar transações recentes (apenas despesas)
+    transactions = session.exec(select(Transaction).where(Transaction.date >= thirty_days_ago, Transaction.type == 'expense')).all()
+    
+    suggestions = []
+    total_potential = 0.0
+    
+    # 1. Identificar Taxas Bancárias
+    fee_keywords = ["taxa", "tarifa", "iof", "anuidade", "manutencao", "manutenção", "cesta"]
+    fees = [
+        t for t in transactions 
+        if any(k in t.description.lower() for k in fee_keywords) 
+        or t.category.lower() in ["taxas", "banco", "tarifas"]
+    ]
+    
+    if fees:
+        fees_total = sum(t.amount for t in fees)
+        suggestions.append({
+            "id": "fees-1",
+            "title": "Taxas Bancárias",
+            "description": f"Identificamos {len(fees)} cobranças de taxas (ex: manutenção, IOF).",
+            "amount": fees_total,
+            "actionLabel": "Ver Extrato",
+            "category": "fees"
+        })
+        total_potential += fees_total
+
+    # 2. Identificar Gastos com Delivery/Fast Food (Impulso)
+    food_categories = ["alimentação", "alimentacao", "restaurante", "fast food", "lazer"]
+    delivery_keywords = ["ifood", "uber eats", "rappi", "delivery", "mc donalds", "burger king", "subway", "zè delivery"]
+    
+    impulse_food = [
+        t for t in transactions 
+        if (t.category.lower() in food_categories and t.amount > 70.0) # Gastos altos em restaurante
+        or any(k in t.description.lower() for k in delivery_keywords) # Qualquer valor em delivery
+    ]
+    
+    if impulse_food:
+        impulse_total = sum(t.amount for t in impulse_food)
+        suggestions.append({
+            "id": "impulse-1",
+            "title": "Delivery e Restaurantes",
+            "description": f"Identificamos {len(impulse_food)} gastos com delivery ou restaurantes caros.",
+            "amount": impulse_total,
+            "actionLabel": "Ver Detalhes",
+            "category": "impulse"
+        })
+        total_potential += impulse_total
+
+    # 3. Identificar Assinaturas e Serviços Recorrentes
+    sub_categories = ["assinatura", "streaming", "serviços digitais", "lazer"]
+    sub_keywords = ["netflix", "spotify", "prime video", "amazon prime", "disney", "hbo", "apple", "google", "youtube", "globo", "chatgpt", "claude"]
+    
+    subscriptions = [
+        t for t in transactions 
+        if (t.category.lower() in sub_categories)
+        or (t.amount < 200 and any(k in t.description.lower() for k in sub_keywords))
+    ]
+    
+    # Remover duplicatas se uma transação cair em mais de uma regra (pouco provável com a lógica atual, mas boa prática)
+    # Aqui estamos apenas somando, então ok.
+    
+    if subscriptions:
+        sub_total = sum(t.amount for t in subscriptions)
+        suggestions.append({
+            "id": "sub-1",
+            "title": "Assinaturas Digitais",
+            "description": f"Você gastou com {len(subscriptions)} serviços de assinatura recentemente.",
+            "amount": sub_total,
+            "actionLabel": "Revisar",
+            "category": "subscription"
+        })
+        total_potential += sub_total
+
     return {
-        "totalPotential": 215.90,
-        "leaksCount": 4,
+        "totalPotential": total_potential,
+        "leaksCount": len(suggestions),
         "period": "Últimos 30 Dias",
-        "suggestions": [
-            {
-                "id": "1", "title": "Assinaturas Não Utilizadas", 
-                "description": "Você tem 2 serviços de streaming de música ativos.", 
-                "amount": 45.90, "actionLabel": "Cancelar", "category": "subscription"
-            },
-            {
-                "id": "2", "title": "Compras Impulsivas", 
-                "description": "Identificamos 3 compras de fast-food acima de R$ 50.", 
-                "amount": 120.00, "actionLabel": "Ver Detalhes", "category": "impulse"
-            },
-             {
-                "id": "3", "title": "Taxas Bancárias", 
-                "description": "Taxa de manutenção de conta cobrada.", 
-                "amount": 50.00, "actionLabel": "Ver Opções", "category": "fees"
-            }
-        ]
+        "suggestions": suggestions
     }
 
 @app.get("/api/interconnected-summary/")
@@ -473,22 +621,102 @@ def get_interconnected_summary(session: Session = Depends(get_session)):
 @app.get("/api/predictive-analysis/")
 def get_predictive_analysis(session: Session = Depends(get_session)):
     """
-    Calcula base para projeção futura.
-    Pega o saldo atual das contas e receitas/despesas médias.
+    Calcula base para projeção futura usando dados reais.
+    Gera cenários baseados em categorias de gastos frequentes.
     """
     accounts = session.exec(select(Account)).all()
-    total_balance = sum(a.balance for a in accounts) if accounts else 15230.50
+    total_balance = sum(a.balance for a in accounts) if accounts else 0.0
     
-    # Mock scenarios
-    scenarios = [
-        {"id": 1, "label": "Cortar fast-food", "savings": 150, "checked": True, "iconName": "ShoppingBag", "color": "text-purple-400"},
-        {"id": 2, "label": "Cancelar streaming", "savings": 45, "checked": False, "iconName": "Clapperboard", "color": "text-blue-400"},
-        {"id": 3, "label": "Reduzir Uber/99", "savings": 200, "checked": True, "iconName": "Car", "color": "text-yellow-400"}
-    ]
+    # Calcular médias mensais baseadas nos últimos 90 dias
+    ninety_days_ago = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+    transactions = session.exec(select(Transaction).where(Transaction.date >= ninety_days_ago)).all()
+    
+    if not transactions:
+        # Se não houver transações recentes, retornar zerado mas com estrutura válida
+        return {
+            "currentBalance": total_balance,
+            "monthlyIncome": 0.0,
+            "baseExpense": 0.0,
+            "scenarios": []
+        }
+
+    # Calcular o período real de dados (em meses) para não distorcer a média de novos usuários
+    dates = [datetime.strptime(t.date, "%Y-%m-%d") for t in transactions]
+    if dates:
+        oldest_date = min(dates)
+        days_diff = (datetime.now() - oldest_date).days
+        # Mínimo de 1 mês para evitar divisão por zero ou números gigantes
+        # Se tiver menos de 30 dias de dados, consideramos como "1 mês" de atividade para a média
+        months_active = max(1, days_diff / 30)
+    else:
+        months_active = 1
+
+    total_income = sum(t.amount for t in transactions if t.type == 'income')
+    total_expense = sum(t.amount for t in transactions if t.type == 'expense')
+    
+    avg_monthly_income = total_income / months_active
+    avg_monthly_expense = total_expense / months_active
+    
+    # Gerar cenários dinâmicos baseados em gastos reais
+    scenarios = []
+    
+    # 1. Cenário: Reduzir Alimentação/Delivery
+    food_expenses = [t for t in transactions if t.type == 'expense' and t.category.lower() in ["alimentação", "restaurante", "fast food"]]
+    if food_expenses:
+        avg_food = sum(t.amount for t in food_expenses) / months_active
+        if avg_food > 150: # Threshold reduzido
+            scenarios.append({
+                "id": 1, 
+                "label": "Reduzir Alimentação em 20%", 
+                "savings": round(avg_food * 0.2, 2), 
+                "checked": False, 
+                "iconName": "ShoppingBag", 
+                "color": "text-purple-400"
+            })
+
+    # 2. Cenário: Otimizar Assinaturas
+    sub_keywords = ["netflix", "spotify", "prime", "disney", "hbo", "apple", "google", "youtube"]
+    sub_expenses = [t for t in transactions if t.type == 'expense' and (t.category.lower() in ["assinatura", "streaming"] or any(k in t.description.lower() for k in sub_keywords))]
+    if sub_expenses:
+        avg_sub = sum(t.amount for t in sub_expenses) / months_active
+        if avg_sub > 30: # Threshold reduzido
+             scenarios.append({
+                "id": 2, 
+                "label": "Otimizar Assinaturas", 
+                "savings": round(avg_sub * 0.5, 2),
+                "checked": False, 
+                "iconName": "Clapperboard", 
+                "color": "text-blue-400"
+            })
+
+    # 3. Cenário: Economia em Transporte
+    transport_expenses = [t for t in transactions if t.type == 'expense' and t.category.lower() in ["transporte", "uber", "combustível", "99"]]
+    if transport_expenses:
+        avg_transport = sum(t.amount for t in transport_expenses) / months_active
+        if avg_transport > 80: # Threshold reduzido
+            scenarios.append({
+                "id": 3, 
+                "label": "Economizar no Transporte", 
+                "savings": round(avg_transport * 0.15, 2), 
+                "checked": False, 
+                "iconName": "Car", 
+                "color": "text-yellow-400"
+            })
+            
+    # Fallback
+    if not scenarios and avg_monthly_expense > 0:
+        scenarios.append({
+            "id": 99,
+            "label": "Economizar 5% dos Gastos",
+            "savings": round(avg_monthly_expense * 0.05, 2),
+            "checked": False,
+            "iconName": "TrendingUp",
+            "color": "text-green-400"
+        })
     
     return {
         "currentBalance": total_balance,
-        "monthlyIncome": 5800.00, # Poderia vir da média de transações 'income'
-        "baseExpense": 3500.00,   # Poderia vir da média de transações 'expense'
+        "monthlyIncome": avg_monthly_income,
+        "baseExpense": avg_monthly_expense,
         "scenarios": scenarios
     }

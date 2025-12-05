@@ -6,6 +6,7 @@ export interface Transaction {
   date: string;
   category: string;
   status: 'completed' | 'pending';
+  accountId?: number;
 }
 
 export interface Account {
@@ -22,6 +23,7 @@ export interface Category {
   name: string;
   type: 'Receita' | 'Despesa';
   color: string;
+  icon?: string;
 }
 
 export interface Goal {
@@ -31,6 +33,7 @@ export interface Goal {
   targetAmount: number;
   deadline: string;
   color: string;
+  priority?: 'Alta' | 'Média' | 'Baixa';
   imageUrl?: string; // Added for Summary view
 }
 
@@ -49,6 +52,7 @@ export interface Debt {
   monthly: number;
   dueDate: string;
   status: 'Em dia' | 'Pendente' | 'Atrasado';
+  category: string;
   isUrgent?: boolean; // Added for Summary view logic
 }
 

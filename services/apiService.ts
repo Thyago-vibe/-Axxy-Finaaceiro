@@ -71,6 +71,14 @@ export const apiService = {
     const res = await fetch(`${API_URL}/accounts/`, { method: 'POST', headers, body: JSON.stringify(a) });
     return res.json();
   },
+  updateAccount: async (a: Account): Promise<Account> => {
+    const res = await fetch(`${API_URL}/accounts/${a.id}/`, { method: 'PUT', headers, body: JSON.stringify(a) });
+    return res.json();
+  },
+  deleteAccount: async (id: string): Promise<boolean> => {
+    const res = await fetch(`${API_URL}/accounts/${id}/`, { method: 'DELETE' });
+    return res.ok;
+  },
 
   // --- Budgets ---
   getBudgets: async (): Promise<Budget[]> => {
@@ -101,6 +109,13 @@ export const apiService = {
     const res = await fetch(`${API_URL}/categories/`, { method: 'POST', headers, body: JSON.stringify(c) });
     return res.json();
   },
+  updateCategory: async (c: Category): Promise<Category> => {
+    const res = await fetch(`${API_URL}/categories/${c.id}/`, { method: 'PUT', headers, body: JSON.stringify(c) });
+    return res.json();
+  },
+  deleteCategory: async (id: string | number): Promise<void> => {
+    await fetch(`${API_URL}/categories/${id}/`, { method: 'DELETE' });
+  },
 
   // --- Financial Health (Debts) ---
   getDebts: async (): Promise<Debt[]> => {
@@ -111,6 +126,14 @@ export const apiService = {
   createDebt: async (d: Debt): Promise<Debt> => {
     const res = await fetch(`${API_URL}/debts/`, { method: 'POST', headers, body: JSON.stringify(d) });
     return res.json();
+  },
+  updateDebt: async (d: Debt): Promise<Debt> => {
+    const res = await fetch(`${API_URL}/debts/${d.id}/`, { method: 'PUT', headers, body: JSON.stringify(d) });
+    return res.json();
+  },
+  deleteDebt: async (id: string): Promise<boolean> => {
+    const res = await fetch(`${API_URL}/debts/${id}/`, { method: 'DELETE' });
+    return res.ok;
   },
 
   // --- Alerts ---

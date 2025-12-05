@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Minus, Calendar, ChevronDown, Trash2, X, Edit2, Check } from 'lucide-react';
-import { Transaction, Category } from '../types';
+import { Transaction, Category, Account } from '../types';
+import { formatCurrencyInput, parseCurrencyInput } from '../utils/formatters';
 
 interface TransactionsProps {
   transactions: Transaction[];
   categories: Category[];
+  accounts: Account[];
   onAddTransaction: (t: Transaction) => void;
   onUpdateTransaction: (t: Transaction) => void;
   onDeleteTransaction: (id: string) => void;
@@ -14,6 +16,7 @@ interface TransactionsProps {
 export const Transactions: React.FC<TransactionsProps> = ({
   transactions,
   categories,
+  accounts,
   onAddTransaction,
   onUpdateTransaction,
   onDeleteTransaction,
@@ -27,6 +30,7 @@ export const Transactions: React.FC<TransactionsProps> = ({
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');
+  const [accountId, setAccountId] = useState('');
   const [date, setDate] = useState('');
 
   // New Category State
@@ -39,6 +43,7 @@ export const Transactions: React.FC<TransactionsProps> = ({
     setAmount('');
     setDescription('');
     setCategory('');
+    setAccountId('');
     setDate('');
     setIsCreatingCategory(false);
     setNewCategoryName('');
@@ -51,6 +56,7 @@ export const Transactions: React.FC<TransactionsProps> = ({
     setAmount(t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
     setDescription(t.description);
     setCategory(t.category);
+    setAccountId(t.accountId ? t.accountId.toString() : '');
     setDate(t.date);
     setIsModalOpen(true);
   };
@@ -72,9 +78,7 @@ export const Transactions: React.FC<TransactionsProps> = ({
     e.preventDefault();
     if (!amount || !description) return;
 
-    // Parse formatted string (e.g., "1.234,56") back to number
-    // Remove dots (thousands), replace comma with dot
-    const numericAmount = parseFloat(amount.replace(/\./g, '').replace(',', '.'));
+    const numericAmount = parseCurrencyInput(amount);
 
     const transactionData: Transaction = {
       id: editingId || undefined,
@@ -83,6 +87,7 @@ export const Transactions: React.FC<TransactionsProps> = ({
       type,
       date: date || new Date().toISOString().split('T')[0],
       category: category || 'Outros',
+      accountId: accountId ? Number(accountId) : undefined,
       status: 'completed'
     };
 
@@ -122,50 +127,55 @@ export const Transactions: React.FC<TransactionsProps> = ({
                 <th className="py-4 pl-6 font-medium">Data</th>
                 <th className="py-4 font-medium">Descrição</th>
                 <th className="py-4 font-medium">Categoria</th>
+                <th className="py-4 font-medium">Conta</th>
                 <th className="py-4 font-medium">Tipo</th>
                 <th className="py-4 font-medium text-right">Valor</th>
                 <th className="py-4 font-medium text-center pr-6">Ações</th>
               </tr>
             </thead>
             <tbody className="text-sm">
-              {transactions.map((t) => (
-                <tr key={t.id} className="border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors">
-                  <td className="py-4 pl-6 text-gray-300">
-                    {t.date ? new Date(t.date).toLocaleDateString('pt-BR') : '-'}
-                  </td>
-                  <td className="py-4 font-medium text-white">{t.description}</td>
-                  <td className="py-4 text-gray-400">{t.category}</td>
-                  <td className="py-4">
-                    {t.type === 'income' ? (
-                      <span className="bg-green-500/10 text-green-500 px-2.5 py-1 rounded-lg text-xs font-bold">Receita</span>
-                    ) : (
-                      <span className="bg-red-500/10 text-red-500 px-2.5 py-1 rounded-lg text-xs font-bold">Despesa</span>
-                    )}
-                  </td>
-                  <td className={`py-4 text-right font-bold ${t.type === 'income' ? 'text-green-500' : 'text-red-500'}`}>
-                    {t.type === 'income' ? '+' : '-'} R$ {t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </td>
-                  <td className="py-4 text-center pr-6 flex justify-center gap-2">
-                    <button
-                      onClick={() => openEditModal(t)}
-                      className="text-gray-500 hover:text-blue-400 transition-colors p-2 hover:bg-blue-400/10 rounded-lg"
-                      title="Editar"
-                    >
-                      <Edit2 size={18} />
-                    </button>
-                    <button
-                      onClick={() => onDeleteTransaction(t.id as string)}
-                      className="text-gray-500 hover:text-red-400 transition-colors p-2 hover:bg-red-400/10 rounded-lg"
-                      title="Excluir"
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {transactions.map((t) => {
+                const accountName = accounts.find(a => a.id === t.accountId)?.name || '-';
+                return (
+                  <tr key={t.id} className="border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors">
+                    <td className="py-4 pl-6 text-gray-300">
+                      {t.date ? new Date(t.date).toLocaleDateString('pt-BR') : '-'}
+                    </td>
+                    <td className="py-4 font-medium text-white">{t.description}</td>
+                    <td className="py-4 text-gray-400">{t.category}</td>
+                    <td className="py-4 text-gray-400">{accountName}</td>
+                    <td className="py-4">
+                      {t.type === 'income' ? (
+                        <span className="bg-green-500/10 text-green-500 px-2.5 py-1 rounded-lg text-xs font-bold">Receita</span>
+                      ) : (
+                        <span className="bg-red-500/10 text-red-500 px-2.5 py-1 rounded-lg text-xs font-bold">Despesa</span>
+                      )}
+                    </td>
+                    <td className={`py-4 text-right font-bold ${t.type === 'income' ? 'text-green-500' : 'text-red-500'}`}>
+                      {t.type === 'income' ? '+' : '-'} R$ {t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </td>
+                    <td className="py-4 text-center pr-6 flex justify-center gap-2">
+                      <button
+                        onClick={() => openEditModal(t)}
+                        className="text-gray-500 hover:text-blue-400 transition-colors p-2 hover:bg-blue-400/10 rounded-lg"
+                        title="Editar"
+                      >
+                        <Edit2 size={18} />
+                      </button>
+                      <button
+                        onClick={() => onDeleteTransaction(t.id as string)}
+                        className="text-gray-500 hover:text-red-400 transition-colors p-2 hover:bg-red-400/10 rounded-lg"
+                        title="Excluir"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
               {transactions.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-10 text-center text-gray-500">
+                  <td colSpan={7} className="py-10 text-center text-gray-500">
                     Nenhuma transação encontrada. Clique em "Adicionar Nova Transação".
                   </td>
                 </tr>
@@ -229,14 +239,7 @@ export const Transactions: React.FC<TransactionsProps> = ({
                       <input
                         type="text"
                         value={amount}
-                        onChange={(e) => {
-                          const value = e.target.value.replace(/\D/g, '');
-                          const formatted = (Number(value) / 100).toLocaleString('pt-BR', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2
-                          });
-                          setAmount(formatted);
-                        }}
+                        onChange={(e) => setAmount(formatCurrencyInput(e.target.value))}
                         placeholder="0,00"
                         className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-2.5 pl-9 pr-3 focus:ring-1 focus:ring-axxy-primary outline-none transition-colors text-sm"
                       />
@@ -262,6 +265,23 @@ export const Transactions: React.FC<TransactionsProps> = ({
                     placeholder="Ex: Salário, Aluguel"
                     className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-2.5 px-3 focus:ring-1 focus:ring-axxy-primary outline-none transition-colors text-sm"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-300 mb-1.5">Conta</label>
+                  <div className="relative">
+                    <select
+                      value={accountId}
+                      onChange={(e) => setAccountId(e.target.value)}
+                      className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-2.5 px-3 appearance-none focus:ring-1 focus:ring-axxy-primary outline-none transition-colors text-sm"
+                    >
+                      <option value="" disabled>Selecione uma conta</option>
+                      {accounts.map(acc => (
+                        <option key={acc.id} value={acc.id}>{acc.name}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" size={16} />
+                  </div>
                 </div>
 
                 <div>

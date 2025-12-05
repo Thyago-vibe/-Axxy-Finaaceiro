@@ -1,8 +1,8 @@
-
 import React, { useState, useEffect } from 'react';
 import { Plus, PenLine, Trash2, Utensils, Car, Gamepad2, Home, AlertCircle, ShoppingBag, Clapperboard, Plane, HeartPulse } from 'lucide-react';
 import { Budget } from '../types';
 import { apiService } from '../services/apiService';
+import { formatCurrencyInput, parseCurrencyInput } from '../utils/formatters';
 
 export const Budgets: React.FC = () => {
   const [budgets, setBudgets] = useState<Budget[]>([]);
@@ -31,7 +31,8 @@ export const Budgets: React.FC = () => {
     if (budget) {
       setEditingBudget(budget);
       setCategory(budget.category);
-      setLimit(budget.limit.toString());
+      // Format initial limit
+      setLimit(budget.limit.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
       setIcon(budget.icon);
     } else {
       setEditingBudget(null);
@@ -48,7 +49,7 @@ export const Budgets: React.FC = () => {
     const budgetData: Budget = {
       id: editingBudget?.id,
       category,
-      limit: parseFloat(limit),
+      limit: parseCurrencyInput(limit),
       spent: editingBudget?.spent || 0, // Mantém o gasto atual se editando
       icon
     };
@@ -219,9 +220,9 @@ export const Budgets: React.FC = () => {
                 <div>
                   <label className="block text-gray-400 text-sm mb-2">Limite Mensal (R$)</label>
                   <input
-                    type="number"
+                    type="text"
                     value={limit}
-                    onChange={(e) => setLimit(e.target.value)}
+                    onChange={(e) => setLimit(formatCurrencyInput(e.target.value))}
                     placeholder="0,00"
                     className="w-full bg-[#0b120f] border border-[#1e332a] text-white rounded-xl px-4 py-3 focus:outline-none focus:border-axxy-primary transition-colors"
                   />

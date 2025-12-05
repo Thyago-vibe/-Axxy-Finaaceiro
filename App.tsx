@@ -14,7 +14,7 @@ import { BehavioralAlerts } from './components/BehavioralAlerts';
 import { FinancialHealth } from './components/FinancialHealth';
 import { InterconnectedSummary } from './components/InterconnectedSummary';
 import { PredictiveAnalysis } from './components/PredictiveAnalysis';
-import { Transaction, UserProfile, Category } from './types';
+import { Transaction, UserProfile, Category, Account } from './types';
 import { Bell, Menu } from 'lucide-react';
 import { apiService } from './services/apiService';
 
@@ -25,6 +25,7 @@ const App: React.FC = () => {
   const [userProfile, setUserProfile] = useState<UserProfile>({ name: '', email: '', avatar: '' });
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Initial Data Load from Backend
@@ -32,15 +33,17 @@ const App: React.FC = () => {
     const loadData = async () => {
       setIsLoading(true);
       try {
-        const [profileData, transactionsData, categoriesData] = await Promise.all([
+        const [profileData, transactionsData, categoriesData, accountsData] = await Promise.all([
           apiService.getProfile().catch(() => ({ name: 'Convidado', email: '', avatar: '' } as UserProfile)),
           apiService.getTransactions().catch(() => []),
-          apiService.getCategories().catch(() => [])
+          apiService.getCategories().catch(() => []),
+          apiService.getAccounts().catch(() => [])
         ]);
 
         setUserProfile(profileData);
         setTransactions(transactionsData);
         setCategories(categoriesData);
+        setAccounts(accountsData);
       } catch (error) {
         console.error("Erro ao conectar com o backend:", error);
       } finally {
@@ -85,9 +88,38 @@ const App: React.FC = () => {
     if (confirm("Tem certeza que deseja excluir esta transação?")) {
       try {
         await apiService.deleteTransaction(id);
-        setTransactions(prev => prev.filter(t => t.id !== id));
+        setTransactions(prev => prev.filter(t => String(t.id) !== id));
       } catch (e) {
         console.error("Failed to delete transaction", e);
+      }
+    }
+  };
+
+  const handleAddAccount = async (newAccount: Account) => {
+    try {
+      const created = await apiService.createAccount(newAccount);
+      setAccounts(prev => [...prev, created]);
+    } catch (e) {
+      console.error("Failed to create account", e);
+    }
+  };
+
+  const handleUpdateAccount = async (updatedAccount: Account) => {
+    try {
+      const updated = await apiService.updateAccount(updatedAccount);
+      setAccounts(prev => prev.map(a => a.id === updated.id ? updated : a));
+    } catch (e) {
+      console.error("Failed to update account", e);
+    }
+  };
+
+  const handleDeleteAccount = async (id: string) => {
+    if (confirm("Tem certeza que deseja excluir esta conta?")) {
+      try {
+        await apiService.deleteAccount(id);
+        setAccounts(prev => prev.filter(a => String(a.id) !== id));
+      } catch (e) {
+        console.error("Failed to delete account", e);
       }
     }
   };
@@ -111,6 +143,7 @@ const App: React.FC = () => {
         return <Transactions
           transactions={transactions}
           categories={categories}
+          accounts={accounts}
           onAddTransaction={handleAddTransaction}
           onUpdateTransaction={handleUpdateTransaction}
           onDeleteTransaction={handleDeleteTransaction}
@@ -122,7 +155,12 @@ const App: React.FC = () => {
       case 'budgets':
         return <Budgets />;
       case 'accounts':
-        return <Accounts />;
+        return <Accounts
+          accounts={accounts}
+          onAddAccount={handleAddAccount}
+          onUpdateAccount={handleUpdateAccount}
+          onDeleteAccount={handleDeleteAccount}
+        />;
       case 'categories':
         return <Categories />;
       case 'ai-assist':
