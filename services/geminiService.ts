@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Transaction, AISuggestion } from "../types";
 
-const apiKey = process.env.API_KEY || '';
+const apiKey = process.env.VITE_GEMINI_API_KEY || 'AIzaSyANvpW4OCVfLCupMEl-O9O3o8jHP25dPJc';
 
 // Mock fail-safe if no key
 const mockSuggestions: AISuggestion[] = [
