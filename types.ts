@@ -48,6 +48,7 @@ export interface Budget {
   limit: number;
   icon: string;
   priority?: string; // 'essencial' | 'alto' | 'medio' | 'baixo'
+  goal?: string | null; // Objetivo do orçamento
 }
 
 export interface BudgetItem {

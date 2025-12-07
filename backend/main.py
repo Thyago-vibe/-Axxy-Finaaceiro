@@ -60,6 +60,7 @@ class Budget(SQLModel, table=True):
     limit: float
     icon: str
     priority: str = Field(default="medio")
+    goal: Optional[str] = None  # Objetivo do orçamento, ex: "Comprar sofá"
 
 class BudgetItem(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -331,6 +332,29 @@ def delete_budget(budget_id: int, session: Session = Depends(get_session)):
     session.commit()
     return {"ok": True}
 
+@app.put("/api/budgets/{budget_id}/", response_model=Budget)
+def update_budget(budget_id: int, budget_data: dict, session: Session = Depends(get_session)):
+    budget = session.get(Budget, budget_id)
+    if not budget:
+        raise HTTPException(status_code=404, detail="Orçamento não encontrado")
+    
+    # Atualizar campos permitidos
+    if "category" in budget_data:
+        budget.category = budget_data["category"]
+    if "limit" in budget_data:
+        budget.limit = budget_data["limit"]
+    if "icon" in budget_data:
+        budget.icon = budget_data["icon"]
+    if "priority" in budget_data:
+        budget.priority = budget_data["priority"]
+    if "goal" in budget_data:
+        budget.goal = budget_data["goal"]
+    
+    session.add(budget)
+    session.commit()
+    session.refresh(budget)
+    return budget
+
 # --- BUDGET ITEMS (Subcategorias) ---
 
 @app.post("/api/budgets/{budget_id}/items", response_model=BudgetItem)
@@ -425,6 +449,110 @@ def suggest_budget_category(data: dict, session: Session = Depends(get_session))
         "suggestedCategory": "Outros",
         "confidence": 0,
         "allScores": scores
+    }
+
+@app.post("/api/budgets/calculate-limit")
+def calculate_budget_limit(data: dict, session: Session = Depends(get_session)):
+    """
+    IA que calcula o limite ideal para um orçamento baseado em:
+    - Saldo disponível nas contas
+    - Histórico de receitas e despesas
+    - Prioridade do orçamento
+    - Objetivo/meta do usuário
+    """
+    category = data.get("category", "")
+    priority = data.get("priority", "medio")
+    goal = data.get("goal", "")
+    goal_amount = data.get("goal_amount", 0)  # Valor que quer acumular
+    
+    # Buscar dados das contas
+    accounts = session.exec(select(Account)).all()
+    total_balance = sum(a.balance for a in accounts)
+    
+    # Buscar transações dos últimos 90 dias
+    from datetime import datetime, timedelta
+    cutoff_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+    transactions = session.exec(select(Transaction)).all()
+    
+    # Filtrar transações recentes
+    recent_transactions = [t for t in transactions if t.date >= cutoff_date]
+    
+    # Calcular receitas e despesas mensais médias
+    total_income = sum(t.amount for t in recent_transactions if t.type == "income")
+    total_expenses = sum(t.amount for t in recent_transactions if t.type == "expense")
+    
+    # Média mensal (3 meses)
+    monthly_income = total_income / 3 if total_income > 0 else 0
+    monthly_expenses = total_expenses / 3 if total_expenses > 0 else 0
+    monthly_available = monthly_income - monthly_expenses
+    
+    # Gastos na categoria específica
+    category_expenses = sum(t.amount for t in recent_transactions 
+                           if t.type == "expense" and t.category == category)
+    monthly_category_avg = category_expenses / 3 if category_expenses > 0 else 0
+    
+    # Buscar orçamentos existentes
+    existing_budgets = session.exec(select(Budget)).all()
+    total_committed = sum(b.limit for b in existing_budgets if b.category != category)
+    
+    # Calcular disponível para este orçamento
+    available_for_budget = max(0, monthly_available - (total_committed * 0.7))
+    
+    # Pesos por prioridade
+    priority_percentages = {
+        "essencial": 0.35,  # 35% do disponível
+        "alto": 0.25,       # 25% 
+        "medio": 0.20,      # 20%
+        "baixo": 0.10       # 10%
+    }
+    
+    priority_multiplier = priority_percentages.get(priority, 0.20)
+    suggested_limit = max(50, available_for_budget * priority_multiplier)
+    
+    # Se usuário tem uma meta específica, calcular timeline
+    months_to_goal = 0
+    if goal_amount > 0 and suggested_limit > 0:
+        months_to_goal = round(goal_amount / suggested_limit, 1)
+    
+    # Gerar explicação
+    reasons = []
+    if monthly_income > 0:
+        reasons.append(f"Sua renda média é de R$ {monthly_income:,.2f}/mês")
+    if monthly_expenses > 0:
+        reasons.append(f"Suas despesas médias são R$ {monthly_expenses:,.2f}/mês")
+    if monthly_available > 0:
+        reasons.append(f"Sobra em média R$ {monthly_available:,.2f}/mês")
+    if monthly_category_avg > 0:
+        reasons.append(f"Você gasta em média R$ {monthly_category_avg:,.2f}/mês em {category}")
+    
+    # Insights inteligentes
+    insights = []
+    if monthly_category_avg > suggested_limit:
+        insights.append({
+            "type": "warning",
+            "message": f"Você gasta mais em {category} do que o sugerido. Considere revisar seus hábitos."
+        })
+    if total_balance < suggested_limit * 3:
+        insights.append({
+            "type": "caution",
+            "message": "Seu saldo atual é baixo. Considere um limite menor."
+        })
+    if months_to_goal > 12:
+        insights.append({
+            "type": "info",
+            "message": f"Para atingir R$ {goal_amount:,.2f} mais rápido, aumente a economia mensal."
+        })
+    
+    return {
+        "suggested_limit": round(suggested_limit, 2),
+        "available_monthly": round(monthly_available, 2),
+        "total_balance": round(total_balance, 2),
+        "monthly_category_avg": round(monthly_category_avg, 2),
+        "months_to_goal": months_to_goal if goal_amount > 0 else None,
+        "goal_amount": goal_amount,
+        "reasoning": reasons,
+        "insights": insights,
+        "explanation": f"Com base em sua renda de R$ {monthly_income:,.2f} e despesas de R$ {monthly_expenses:,.2f}, você tem R$ {monthly_available:,.2f} disponível por mês. Para a categoria {category} ({priority}), sugerimos R$ {suggested_limit:,.2f}/mês."
     }
 
 @app.post("/api/budgets/allocate")

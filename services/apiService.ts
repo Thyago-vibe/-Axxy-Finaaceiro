@@ -82,19 +82,41 @@ export const apiService = {
     if (!res.ok) return [];
     return res.json();
   },
-  createBudget: async (b: Budget): Promise<Budget> => {
+  createBudget: async (b: Omit<Budget, 'id'>): Promise<Budget> => {
     const res = await fetch(`${API_URL}/budgets/`, { method: 'POST', headers, body: JSON.stringify(b) });
     return res.json();
   },
-  deleteBudget: async (id: string): Promise<boolean> => {
+  deleteBudget: async (id: string | number): Promise<boolean> => {
     const res = await fetch(`${API_URL}/budgets/${id}/`, { method: 'DELETE' });
     return res.ok;
+  },
+  updateBudget: async (id: string | number, b: Partial<Omit<Budget, 'id'>>): Promise<Budget> => {
+    const res = await fetch(`${API_URL}/budgets/${id}/`, { method: 'PUT', headers, body: JSON.stringify(b) });
+    return res.json();
   },
   suggestBudgetCategory: async (description: string, amount?: number): Promise<{ suggestedCategory: string; confidence: number }> => {
     const res = await fetch(`${API_URL}/budgets/suggest`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ description, amount })
+    });
+    return res.json();
+  },
+  calculateBudgetLimit: async (data: { category: string; priority: string; goal?: string; goal_amount?: number }): Promise<{
+    suggested_limit: number;
+    available_monthly: number;
+    total_balance: number;
+    monthly_category_avg: number;
+    months_to_goal: number | null;
+    goal_amount: number;
+    reasoning: string[];
+    insights: { type: string; message: string }[];
+    explanation: string;
+  }> => {
+    const res = await fetch(`${API_URL}/budgets/calculate-limit`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(data)
     });
     return res.json();
   },
