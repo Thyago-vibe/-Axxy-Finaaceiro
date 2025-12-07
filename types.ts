@@ -1,6 +1,7 @@
 
 export interface Transaction {
-  id: string;
+  id: string | number;
+  accountId?: string | number; // Optional for compatibility with old data
   description: string;
   amount: number;
   type: 'income' | 'expense';
@@ -9,8 +10,11 @@ export interface Transaction {
   status: 'completed' | 'pending';
 }
 
+export type CreateTransactionDTO = Omit<Transaction, 'id'>;
+
+
 export interface Account {
-  id: string;
+  id: string | number;
   name: string;
   type: string;
   balance: number;
@@ -18,8 +22,10 @@ export interface Account {
   icon: string;
 }
 
+export type CreateAccountDTO = Omit<Account, 'id'>;
+
 export interface Category {
-  id: string; 
+  id: string;
   name: string;
   type: 'Receita' | 'Despesa';
   color: string;
@@ -151,7 +157,7 @@ export interface Asset {
   name: string;
   type: string;
   value: number;
-  iconType: 'home' | 'car' | 'investment' | 'other'; 
+  iconType: 'home' | 'car' | 'investment' | 'other';
 }
 
 export interface Liability {

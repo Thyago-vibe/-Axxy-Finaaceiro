@@ -1,5 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { formatCurrency } from '../utils/formatters';
 import { Plus, PenLine, Trash2, Utensils, Car, Gamepad2, Home, AlertCircle } from 'lucide-react';
 import { Budget } from '../types';
 import { apiService } from '../services/apiService';
@@ -9,10 +11,10 @@ export const Budgets: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-      apiService.getBudgets()
-        .then(setBudgets)
-        .catch(console.error)
-        .finally(() => setLoading(false));
+    apiService.getBudgets()
+      .then(setBudgets)
+      .catch(console.error)
+      .finally(() => setLoading(false));
   }, []);
 
   const getIcon = (iconName: string) => {
@@ -56,12 +58,12 @@ export const Budgets: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-white text-lg font-bold">{budget.category}</h3>
-                  <p className="text-gray-500 text-xs">R$ {budget.spent} de R$ {budget.limit}</p>
+                  <p className="text-gray-500 text-xs">{formatCurrency(budget.spent)} de {formatCurrency(budget.limit)}</p>
                 </div>
               </div>
               <div className="flex items-center gap-6">
                 <div className="w-32 h-2.5 rounded-full bg-[#0b120f] overflow-hidden">
-                    <div className={`h-full rounded-full ${status}`} style={{ width: `${Math.min(percentage, 100)}%` }}></div>
+                  <div className={`h - full rounded - full ${status} `} style={{ width: `${Math.min(percentage, 100)}% ` }}></div>
                 </div>
                 <p className="text-white font-bold">{percentage.toFixed(0)}%</p>
               </div>

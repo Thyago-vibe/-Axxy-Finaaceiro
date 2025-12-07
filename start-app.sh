@@ -12,11 +12,23 @@ echo "Limpando processos antigos..." >> "$LOG_FILE"
 pkill -f "serve -s dist" >> "$LOG_FILE" 2>&1
 # Tentar matar processos na porta 3000 especificamente
 fuser -k 3000/tcp >> "$LOG_FILE" 2>&1 || true
+# Limpar processos do backend também
+pkill -f "uvicorn" >> "$LOG_FILE" 2>&1 || true
+fuser -k 8000/tcp >> "$LOG_FILE" 2>&1 || true
 
 # 2. Iniciar servidor (usando caminho absoluto do npm)
 echo "Iniciando servidor..." >> "$LOG_FILE"
 /usr/bin/npm run start >> "$LOG_FILE" 2>&1 &
 SERVER_PID=$!
+echo "Frontend iniciado com PID: $SERVER_PID" >> "$LOG_FILE"
+
+# 2.1 Iniciar Backend
+echo "Iniciando backend..." >> "$LOG_FILE"
+cd backend
+./venv/bin/uvicorn main:app --reload --port 8000 >> "$LOG_FILE" 2>&1 &
+BACKEND_PID=$!
+echo "Backend iniciado com PID: $BACKEND_PID" >> "$LOG_FILE"
+cd ..
 echo "Servidor iniciado com PID: $SERVER_PID" >> "$LOG_FILE"
 
 # 3. Aguardar servidor (método simples: sleep)

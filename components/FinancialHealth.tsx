@@ -1,6 +1,6 @@
-
 import React, { useState, useEffect } from 'react';
-import { Plus, PenLine, Trash2 } from 'lucide-react';
+import { Activity, Heart, AlertTriangle, CheckCircle, TrendingUp, Plus } from 'lucide-react';
+import { formatCurrency } from '../utils/formatters';
 import { Debt } from '../types';
 import { apiService } from '../services/apiService';
 
@@ -10,9 +10,9 @@ export const FinancialHealth: React.FC = () => {
 
   useEffect(() => {
     apiService.getDebts()
-        .then(setDebts)
-        .catch(console.error)
-        .finally(() => setLoading(false));
+      .then(setDebts)
+      .catch(console.error)
+      .finally(() => setLoading(false));
   }, []);
 
   if (loading) return <div className="text-white">Carregando saúde financeira...</div>;
@@ -29,16 +29,16 @@ export const FinancialHealth: React.FC = () => {
       <div className="bg-[#15221c] border border-[#1e332a] rounded-3xl p-8">
         <h3 className="text-xl font-bold text-white mb-6">Minhas Dívidas Ativas</h3>
         <table className="w-full">
-            <tbody className="text-sm">
-              {debts.map((debt) => (
-                <tr key={debt.id} className="border-b border-white/5 hover:bg-white/5">
-                  <td className="py-5 font-medium text-white">{debt.name}</td>
-                  <td className="py-5 text-gray-300">R$ {debt.remaining}</td>
-                  <td className="py-5 text-gray-300">{debt.status}</td>
-                </tr>
-              ))}
-              {debts.length === 0 && <tr><td className="py-4 text-gray-500">Nenhuma dívida ativa.</td></tr>}
-            </tbody>
+          <tbody className="text-sm">
+            {debts.map((debt) => (
+              <tr key={debt.id} className="border-b border-white/5 hover:bg-white/5">
+                <td className="py-5 font-medium text-white">{debt.name}</td>
+                <td className="py-5 text-gray-300">{formatCurrency(debt.remaining)}</td>
+                <td className="py-5 text-gray-300">{debt.status}</td>
+              </tr>
+            ))}
+            {debts.length === 0 && <tr><td className="py-4 text-gray-500">Nenhuma dívida ativa.</td></tr>}
+          </tbody>
         </table>
       </div>
     </div>
