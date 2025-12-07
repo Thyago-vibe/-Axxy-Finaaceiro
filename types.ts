@@ -47,7 +47,18 @@ export interface Budget {
   spent: number;
   limit: number;
   icon: string;
+  priority?: string; // 'essencial' | 'alto' | 'medio' | 'baixo'
 }
+
+export interface BudgetItem {
+  id: string | number;
+  budget_id: string | number;
+  name: string;
+  target_amount: number;
+  spent: number;
+  completed: boolean;
+}
+
 
 export interface Debt {
   id: string;

@@ -1,9 +1,10 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Minus, Calendar, ChevronDown, Trash2, X } from 'lucide-react';
-import { Transaction, Account } from '../types';
+import { Plus, Minus, Calendar, ChevronDown, Trash2, X, Sparkles, TrendingUp } from 'lucide-react';
+import { Transaction, Account, Budget } from '../types';
 import { formatCurrency, formatCurrencyInput, parseCurrencyInput } from '../utils/formatters';
+import { apiService } from '../services/apiService';
 
 interface TransactionsProps {
   transactions: Transaction[];
@@ -13,6 +14,7 @@ interface TransactionsProps {
 }
 
 export const Transactions: React.FC<TransactionsProps> = ({ transactions, accounts, onAddTransaction, onDeleteTransaction }) => {
+  console.log('Transactions.tsx: Received transactions prop:', transactions);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Form State
@@ -22,6 +24,40 @@ export const Transactions: React.FC<TransactionsProps> = ({ transactions, accoun
   const [category, setCategory] = useState('');
   const [accountId, setAccountId] = useState('');
   const [date, setDate] = useState('');
+
+  // AI Suggestion State
+  const [suggestedCategory, setSuggestedCategory] = useState('');
+  const [confidence, setConfidence] = useState(0);
+  const [isLoadingSuggestion, setIsLoadingSuggestion] = useState(false);
+
+  // Budgets for category validation
+  const [budgets, setBudgets] = useState<Budget[]>([]);
+
+  useEffect(() => {
+    apiService.getBudgets().then(setBudgets).catch(console.error);
+  }, []);
+
+  // Debounced AI suggestion
+  useEffect(() => {
+    if (!description || description.length < 3) {
+      setSuggestedCategory('');
+      setConfidence(0);
+      return;
+    }
+
+    setIsLoadingSuggestion(true);
+    const timer = setTimeout(() => {
+      apiService.suggestBudgetCategory(description, parseFloat(amount) || undefined)
+        .then(result => {
+          setSuggestedCategory(result.suggestedCategory);
+          setConfidence(result.confidence);
+        })
+        .catch(console.error)
+        .finally(() => setIsLoadingSuggestion(false));
+    }, 800); // Debounce 800ms
+
+    return () => clearTimeout(timer);
+  }, [description, amount]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,7 +83,15 @@ export const Transactions: React.FC<TransactionsProps> = ({ transactions, accoun
     setCategory('');
     setDate('');
     setAccountId('');
+    setSuggestedCategory('');
+    setConfidence(0);
   };
+
+  const handleAcceptSuggestion = () => {
+    setCategory(suggestedCategory);
+  };
+
+  const selectedBudget = budgets.find(b => b.category === category);
 
   return (
     <div className="space-y-6 animate-fade-in max-w-6xl mx-auto">
@@ -217,13 +261,53 @@ export const Transactions: React.FC<TransactionsProps> = ({ transactions, accoun
                     type="text"
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Ex: Salário, Aluguel"
+                    placeholder="Ex: Compra no mercado, Uber"
                     className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 px-4 focus:ring-1 focus:ring-axxy-primary outline-none transition-colors"
                   />
                 </div>
 
+                {/* AI Suggestion Badge */}
+                {suggestedCategory && confidence > 0 && (
+                  <div className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/30 rounded-2xl p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center flex-shrink-0">
+                        <Sparkles className="text-purple-400" size={20} />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-sm font-semibold text-white">IA sugeriu:</span>
+                          <span className="text-xs bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full">
+                            {confidence.toFixed(0)}% confiança
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-300 mb-2">
+                          A categoria <span className="font-bold text-purple-400">{suggestedCategory}</span> parece ideal para esta transação.
+                        </p>
+                        {category !== suggestedCategory && (
+                          <button
+                            type="button"
+                            onClick={handleAcceptSuggestion}
+                            className="text-sm font-medium text-purple-400 hover:text-purple-300 transition-colors flex items-center gap-1"
+                          >
+                            <TrendingUp size={14} />
+                            Aceitar sugestão
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Categoria</label>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-300">Categoria</label>
+                    {isLoadingSuggestion && (
+                      <span className="text-xs text-gray-500 flex items-center gap-1">
+                        <div className="w-3 h-3 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+                        Analisando...
+                      </span>
+                    )}
+                  </div>
                   <div className="relative">
                     <select
                       value={category}
@@ -237,9 +321,31 @@ export const Transactions: React.FC<TransactionsProps> = ({ transactions, accoun
                       <option value="Lazer">Lazer</option>
                       <option value="Saúde">Saúde</option>
                       <option value="Salário">Salário</option>
+                      <option value="Outros">Outros</option>
                     </select>
                     <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" size={18} />
                   </div>
+
+                  {/* Budget Info Display */}
+                  {selectedBudget && (
+                    <div className="mt-3 p-3 bg-[#0b120f] border border-white/5 rounded-xl">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-gray-400">Orçamento de {selectedBudget.category}</span>
+                        <span className={`font-bold ${(selectedBudget.spent / selectedBudget.limit * 100) > 80 ? 'text-red-400' : 'text-axxy-primary'
+                          }`}>
+                          {formatCurrency(selectedBudget.spent)} / {formatCurrency(selectedBudget.limit)}
+                        </span>
+                      </div>
+                      <div className="w-full h-1.5 bg-white/5 rounded-full mt-2 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${(selectedBudget.spent / selectedBudget.limit * 100) > 100 ? 'bg-red-500' :
+                            (selectedBudget.spent / selectedBudget.limit * 100) > 80 ? 'bg-yellow-500' : 'bg-axxy-primary'
+                            }`}
+                          style={{ width: `${Math.min((selectedBudget.spent / selectedBudget.limit * 100), 100)}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="pt-4 flex gap-4">

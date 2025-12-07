@@ -3,15 +3,22 @@ import React, { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { formatCurrency } from '../utils/formatters';
+import { Transaction, Account } from '../types';
 
 interface DashboardProps {
   transactions: Transaction[];
+  accounts: Account[];
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ transactions }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ transactions, accounts }) => {
 
-  // Dynamic Calculation: Financial Summary
-  const { balance, incomeMonth, expenseMonth } = useMemo(() => {
+  // Calculate balance from accounts
+  const totalAccountBalance = useMemo(() => {
+    return accounts.reduce((sum, account) => sum + account.balance, 0);
+  }, [accounts]);
+
+  // Dynamic Calculation: Financial Summary (for monthly income/expense)
+  const { incomeMonth, expenseMonth } = useMemo(() => {
     let bal = 0;
     let inc = 0;
     let exp = 0;
@@ -34,7 +41,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions }) => {
       }
     });
 
-    return { balance: bal, incomeMonth: inc, expenseMonth: exp };
+    return { incomeMonth: inc, expenseMonth: exp };
   }, [transactions]);
 
   // Dynamic Calculation: Monthly Flow (Bar Chart) - Last 6 Months
@@ -100,8 +107,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions }) => {
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-axxy-card p-6 rounded-3xl border border-axxy-border">
-          <p className="text-gray-400 text-sm mb-1">Saldo Total Calculado</p>
-          <h3 className="text-3xl font-bold text-white">{formatCurrency(balance)}</h3>
+          <p className="text-gray-400 text-sm mb-1">Saldo Total (Contas)</p>
+          <h3 className="text-3xl font-bold text-white">{formatCurrency(totalAccountBalance)}</h3>
         </div>
         <div className="bg-axxy-card p-6 rounded-3xl border border-axxy-border">
           <p className="text-gray-400 text-sm mb-1">Receitas (Mês Atual)</p>

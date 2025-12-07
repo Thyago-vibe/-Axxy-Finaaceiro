@@ -59,6 +59,15 @@ class Budget(SQLModel, table=True):
     spent: float = 0  # Será calculado automaticamente
     limit: float
     icon: str
+    priority: str = Field(default="medio")
+
+class BudgetItem(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    budget_id: int = Field(foreign_key="budget.id")
+    name: str  # "Compra de sofá", "Reforma cozinha"
+    target_amount: float
+    spent: float = 0
+    completed: bool = False
 
 class Account(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -321,6 +330,191 @@ def delete_budget(budget_id: int, session: Session = Depends(get_session)):
     session.delete(budget)
     session.commit()
     return {"ok": True}
+
+# --- BUDGET ITEMS (Subcategorias) ---
+
+@app.post("/api/budgets/{budget_id}/items", response_model=BudgetItem)
+def create_budget_item(budget_id: int, item: BudgetItem, session: Session = Depends(get_session)):
+    # Verificar se o budget existe
+    budget = session.get(Budget, budget_id)
+    if not budget:
+        raise HTTPException(status_code=404, detail="Orçamento não encontrado")
+    
+    item.budget_id = budget_id
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+    return item
+
+@app.get("/api/budgets/{budget_id}/items", response_model=List[BudgetItem])
+def get_budget_items(budget_id: int, session: Session = Depends(get_session)):
+    items = session.exec(select(BudgetItem).where(BudgetItem.budget_id == budget_id)).all()
+    return items
+
+@app.put("/api/budgets/{budget_id}/items/{item_id}", response_model=BudgetItem)
+def update_budget_item(budget_id: int, item_id: int, item_data: BudgetItem, session: Session = Depends(get_session)):
+    item = session.get(BudgetItem, item_id)
+    if not item or item.budget_id != budget_id:
+        raise HTTPException(status_code=404, detail="Item não encontrado")
+    
+    item.name = item_data.name
+    item.target_amount = item_data.target_amount
+    item.spent = item_data.spent
+    item.completed = item_data.completed
+    
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+    return item
+
+@app.delete("/api/budgets/{budget_id}/items/{item_id}")
+def delete_budget_item(budget_id: int, item_id: int, session: Session = Depends(get_session)):
+    item = session.get(BudgetItem, item_id)
+    if not item or item.budget_id != budget_id:
+        raise HTTPException(status_code=404, detail="Item não encontrado")
+    
+    session.delete(item)
+    session.commit()
+    return {"ok": True}
+
+@app.post("/api/budgets/suggest")
+def suggest_budget_category(data: dict, session: Session = Depends(get_session)):
+    """
+    Sugere uma categoria de orçamento baseado na descrição da transação.
+    Usa análise de palavras-chave para matching inteligente.
+    """
+    description = data.get("description", "").lower()
+    amount = data.get("amount", 0)
+    
+    # Mapeamento de palavras-chave para categorias
+    category_keywords = {
+        "Moradia": ["aluguel", "condomínio", "iptu", "água", "luz", "energia", "gas", "internet", "casa", "apartamento", "reforma", "móveis"],
+        "Alimentação": ["mercado", "supermercado", "feira", "padaria", "restaurante", "lanche", "ifood", "rappi", "uber eats", "comida", "almoço", "jantar", "café"],
+        "Transporte": ["uber", "99", "táxi", "ônibus", "metrô", "gasolina", "combustível", "estacionamento", "pedágio", "carro", "moto", "transporte"],
+        "Lazer": ["cinema", "teatro", "show", "netflix", "spotify", "disney", "prime", "jogo", "game", "viagem", "passeio", "parque", "diversão"],
+        "Saúde": ["médico", "hospital", "farmácia", "remédio", "consulta", "exame", "dentista", "plano de saúde", "academia", "ginástica"],
+        "Salário": ["salário", "pagamento", "recebimento", "renda", "freelance", "honorários"]
+    }
+    
+    # Calcular score para cada categoria
+    scores = {}
+    for category, keywords in category_keywords.items():
+        score = 0
+        for keyword in keywords:
+            if keyword in description:
+                # Score maior para matches mais longos e exatos
+                score += len(keyword) * 2
+        scores[category] = score
+    
+    # Pegar a categoria com maior score
+    if scores:
+        best_category = max(scores, key=scores.get)
+        max_score = scores[best_category]
+        
+        if max_score > 0:
+            # Normalizar confiança (0-100%)
+            confidence = min(100, (max_score / 10) * 100)
+            return {
+                "suggestedCategory": best_category,
+                "confidence": round(confidence, 1),
+                "allScores": scores
+            }
+    
+    # Se não encontrou nenhuma correspondência
+    return {
+        "suggestedCategory": "Outros",
+        "confidence": 0,
+        "allScores": scores
+    }
+
+@app.post("/api/budgets/allocate")
+def auto_allocate_budgets(data: dict, session: Session = Depends(get_session)):
+    """
+    Aloca automaticamente o dinheiro disponível entre os orçamentos
+    baseado em prioridades e padrões de gasto.
+    """
+    available_amount = data.get("availableAmount", 0)
+    
+    if available_amount <= 0:
+        return {"error": "Nenhum valor disponível para alocar"}
+    
+    # Buscar todos os orçamentos
+    budgets = session.exec(select(Budget)).all()
+    
+    if not budgets:
+        return {"error": "Nenhum orçamento cadastrado"}
+    
+    # Pesos por prioridade
+    priority_weights = {
+        "essencial": 4.0,
+        "alto": 2.5,
+        "medio": 1.5,
+        "baixo": 0.8
+    }
+    
+    # Calcular necessidade de cada orçamento
+    budget_needs = []
+    for budget in budgets:
+        percentage_used = (budget.spent / budget.limit * 100) if budget.limit > 0 else 0
+        remaining = budget.limit - budget.spent
+        
+        # Peso baseado em prioridade
+        priority_weight = priority_weights.get(budget.priority, 1.5)
+        
+        # Peso adicional se está perto do limite
+        urgency_weight = 1.0
+        if percentage_used > 90:
+            urgency_weight = 2.0
+        elif percentage_used > 70:
+            urgency_weight = 1.5
+        
+        # Score final
+        need_score = remaining * priority_weight * urgency_weight
+        
+        budget_needs.append({
+            "budget_id": budget.id,
+            "category": budget.category,
+            "priority": budget.priority,
+            "current_spent": budget.spent,
+            "limit": budget.limit,
+            "remaining": remaining,
+            "percentage_used": percentage_used,
+            "need_score": need_score
+        })
+    
+    # Ordenar por score de necessidade
+    budget_needs.sort(key=lambda x: x["need_score"], reverse=True)
+    
+    # Distribuir o dinheiro disponível
+    allocations = []
+    remaining_amount = available_amount
+    total_score = sum(b["need_score"] for b in budget_needs if b["need_score"] > 0)
+    
+    if total_score > 0:
+        for budget_need in budget_needs:
+            # Calcular alocação proporcional ao score
+            if budget_need["need_score"] > 0:
+                allocation = (budget_need["need_score"] / total_score) * available_amount
+                
+                # Não alocar mais do que o necessário para completar o orçamento
+                max_allocation = budget_need["remaining"]
+                final_allocation = min(allocation, max_allocation)
+                
+                allocations.append({
+                    "budget_id": budget_need["budget_id"],
+                    "category": budget_need["category"],
+                    "priority": budget_need["priority"],
+                    "suggested_amount": round(final_allocation, 2),
+                    "new_total": round(budget_need["current_spent"] + final_allocation, 2),
+                    "new_percentage": round((budget_need["current_spent"] + final_allocation) / budget_need["limit"] * 100, 1) if budget_need["limit"] > 0 else 0
+                })
+    
+    return {
+        "total_available": available_amount,
+        "allocations": allocations,
+        "total_allocated": sum(a["suggested_amount"] for a in allocations)
+    }
+
 
 # --- SAÚDE FINANCEIRA E ALERTAS ---
 

@@ -1,5 +1,5 @@
 
-import { Transaction, Goal, UserProfile, Budget, Account, Category, Debt, Alert, LeakageAnalysis, ReportData, InterconnectedSummaryData, PredictionBaseData, NetWorthDashboardData, Asset, Liability } from '../types';
+import { Transaction, Goal, UserProfile, Budget, BudgetItem, Account, Category, Debt, Alert, LeakageAnalysis, ReportData, InterconnectedSummaryData, PredictionBaseData, NetWorthDashboardData, Asset, Liability } from '../types';
 
 const API_URL = 'http://localhost:8000/api';
 
@@ -88,6 +88,43 @@ export const apiService = {
   },
   deleteBudget: async (id: string): Promise<boolean> => {
     const res = await fetch(`${API_URL}/budgets/${id}/`, { method: 'DELETE' });
+    return res.ok;
+  },
+  suggestBudgetCategory: async (description: string, amount?: number): Promise<{ suggestedCategory: string; confidence: number }> => {
+    const res = await fetch(`${API_URL}/budgets/suggest`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ description, amount })
+    });
+    return res.json();
+  },
+
+  // --- Budget Items (Subcategorias) ---
+  getBudgetItems: async (budgetId: string | number): Promise<BudgetItem[]> => {
+    const res = await fetch(`${API_URL}/budgets/${budgetId}/items`);
+    if (!res.ok) return [];
+    return res.json();
+  },
+  createBudgetItem: async (budgetId: string | number, item: Omit<BudgetItem, 'id' | 'budget_id'>): Promise<BudgetItem> => {
+    const res = await fetch(`${API_URL}/budgets/${budgetId}/items`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(item)
+    });
+    return res.json();
+  },
+  updateBudgetItem: async (budgetId: string | number, itemId: string | number, item: BudgetItem): Promise<BudgetItem> => {
+    const res = await fetch(`${API_URL}/budgets/${budgetId}/items/${itemId}`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(item)
+    });
+    return res.json();
+  },
+  deleteBudgetItem: async (budgetId: string | number, itemId: string | number): Promise<boolean> => {
+    const res = await fetch(`${API_URL}/budgets/${budgetId}/items/${itemId}`, {
+      method: 'DELETE'
+    });
     return res.ok;
   },
 

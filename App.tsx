@@ -41,6 +41,7 @@ const App: React.FC = () => {
 
         setUserProfile(profileData);
         setTransactions(transactionsData);
+        console.log('App.tsx: Fetched transactions:', transactionsData);
         setAccounts(accountsData);
       } catch (error) {
         console.error("Erro ao conectar com o backend:", error);
@@ -96,7 +97,7 @@ const App: React.FC = () => {
 
     switch (currentView) {
       case 'dashboard':
-        return <Dashboard transactions={transactions} />;
+        return <Dashboard transactions={transactions} accounts={accounts} />;
       case 'interconnected-summary':
         return <InterconnectedSummary setView={setCurrentView} />;
       case 'transactions':
