@@ -1,16 +1,16 @@
+
 export interface Transaction {
-  id?: string | number;
+  id: string;
   description: string;
   amount: number;
   type: 'income' | 'expense';
   date: string;
   category: string;
   status: 'completed' | 'pending';
-  accountId?: number;
 }
 
 export interface Account {
-  id?: string | number;
+  id: string;
   name: string;
   type: string;
   balance: number;
@@ -19,26 +19,24 @@ export interface Account {
 }
 
 export interface Category {
-  id?: string | number;
+  id: string; 
   name: string;
   type: 'Receita' | 'Despesa';
   color: string;
-  icon?: string;
 }
 
 export interface Goal {
-  id?: string | number;
+  id: string;
   name: string;
   currentAmount: number;
   targetAmount: number;
   deadline: string;
   color: string;
-  priority?: 'Alta' | 'Média' | 'Baixa';
   imageUrl?: string; // Added for Summary view
 }
 
 export interface Budget {
-  id?: string | number;
+  id: string;
   category: string;
   spent: number;
   limit: number;
@@ -46,18 +44,17 @@ export interface Budget {
 }
 
 export interface Debt {
-  id?: string | number;
+  id: string;
   name: string;
   remaining: number;
   monthly: number;
   dueDate: string;
   status: 'Em dia' | 'Pendente' | 'Atrasado';
-  category: string;
   isUrgent?: boolean; // Added for Summary view logic
 }
 
 export interface Alert {
-  id?: string | number;
+  id: string;
   category: string;
   budget: number;
   threshold: number;
@@ -145,4 +142,32 @@ export interface PredictionBaseData {
   monthlyIncome: number;
   baseExpense: number;
   scenarios: PredictionScenario[];
+}
+
+// --- New Types for Net Worth ---
+
+export interface Asset {
+  id: string;
+  name: string;
+  type: string;
+  value: number;
+  iconType: 'home' | 'car' | 'investment' | 'other'; 
+}
+
+export interface Liability {
+  id: string;
+  name: string;
+  type: string;
+  value: number;
+  iconType: 'loan' | 'card' | 'debt' | 'other';
+}
+
+export interface NetWorthDashboardData {
+  totalAssets: number;
+  totalLiabilities: number;
+  netWorth: number;
+  assets: Asset[];
+  liabilities: Liability[];
+  history: { month: string; value: number }[]; // For evolution chart
+  composition: { name: string; value: number; color: string }[]; // For pie chart
 }

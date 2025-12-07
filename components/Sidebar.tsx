@@ -1,5 +1,6 @@
+
 import React from 'react';
-import { LayoutDashboard, Receipt, PieChart, Tag, Settings, Target, Sparkles, Wallet, Calculator, BellRing, HeartPulse, Share2, TrendingUp, X } from 'lucide-react';
+import { LayoutDashboard, Receipt, PieChart, Tag, Settings, Target, Sparkles, Wallet, Calculator, BellRing, HeartPulse, Share2, TrendingUp, X, Landmark } from 'lucide-react';
 
 interface SidebarProps {
   currentView: string;
@@ -15,6 +16,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, isOpen, 
     { id: 'transactions', label: 'Transações', icon: Receipt },
     { id: 'budgets', label: 'Orçamentos', icon: Calculator },
     { id: 'accounts', label: 'Minhas Contas', icon: Wallet },
+    { id: 'net-worth', label: 'Patrimônio Líquido', icon: Landmark },
     { id: 'reports', label: 'Relatórios', icon: PieChart },
     { id: 'categories', label: 'Categorias', icon: Tag },
     { id: 'goals', label: 'Metas', icon: Target },

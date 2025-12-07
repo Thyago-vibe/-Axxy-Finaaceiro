@@ -1,3 +1,4 @@
+
 # Axxy Finance - Guia do Backend (FastAPI)
 
 Este guia contém todo o código necessário para rodar o servidor do Axxy Finance.
@@ -120,6 +121,20 @@ class Alert(SQLModel, table=True):
     enabled: bool
     iconName: str
     colorClass: str
+
+class Asset(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    type: str
+    value: float
+    iconType: str # 'home' | 'car' | 'investment' | 'other'
+
+class Liability(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    type: str
+    value: float
+    iconType: str # 'loan' | 'card' | 'debt' | 'other'
 
 # ==========================================
 # 3. INICIALIZAÇÃO DA API
@@ -303,7 +318,106 @@ def read_alerts(session: Session = Depends(get_session)):
     return alerts
 
 # ==========================================
-# 5. ROTAS AVANÇADAS (AGREGADORES E IA)
+# 5. ROTAS DE PATRIMÔNIO LÍQUIDO
+# ==========================================
+
+@app.get("/api/net-worth/")
+def get_net_worth_dashboard(session: Session = Depends(get_session)):
+    """Retorna dados agregados para o dashboard de Patrimônio."""
+    assets = session.exec(select(Asset)).all()
+    liabilities = session.exec(select(Liability)).all()
+    
+    # Se vazio, cria alguns mocks para o usuário ver como funciona
+    if not assets:
+        assets = [
+            Asset(name="Imóvel Residencial", type="Casa", value=240000, iconType="home"),
+            Asset(name="Veículo Principal", type="Carro", value=120000, iconType="car"),
+            Asset(name="Investimentos", type="Renda Variável", value=180000, iconType="investment")
+        ]
+        for a in assets: session.add(a)
+        session.commit()
+        
+    if not liabilities:
+        liabilities = [
+            Liability(name="Financiamento Imob", type="Empréstimo", value=100000, iconType="loan"),
+            Liability(name="Financiamento Carro", type="Empréstimo", value=35000, iconType="car"),
+            Liability(name="Cartão Crédito", type="Dívida", value=15000, iconType="card")
+        ]
+        for l in liabilities: session.add(l)
+        session.commit()
+    
+    total_assets = sum(a.value for a in assets)
+    total_liabilities = sum(l.value for l in liabilities)
+    net_worth = total_assets - total_liabilities
+    
+    # Mock de histórico (para o gráfico) - Gera variação baseada no valor atual
+    history = []
+    months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun"]
+    base_val = net_worth * 0.95
+    for m in months:
+        val = base_val + (random.random() * (net_worth * 0.1))
+        history.append({"month": m, "value": val})
+    
+    # Composição
+    composition = []
+    colors = ["#22c55e", "#3b82f6", "#a855f7", "#64748b"]
+    asset_types = {}
+    for a in assets:
+        asset_types[a.iconType] = asset_types.get(a.iconType, 0) + a.value
+    
+    i = 0
+    for key, val in asset_types.items():
+        label = "Outros"
+        if key == "home": label = "Imóveis"
+        elif key == "car": label = "Veículos"
+        elif key == "investment": label = "Investimentos"
+        
+        composition.append({"name": label, "value": val, "color": colors[i % len(colors)]})
+        i += 1
+        
+    return {
+        "totalAssets": total_assets,
+        "totalLiabilities": total_liabilities,
+        "netWorth": net_worth,
+        "assets": assets,
+        "liabilities": liabilities,
+        "history": history,
+        "composition": composition
+    }
+
+@app.post("/api/assets/")
+def create_asset(asset: Asset, session: Session = Depends(get_session)):
+    session.add(asset)
+    session.commit()
+    session.refresh(asset)
+    return asset
+
+@app.delete("/api/assets/{asset_id}/")
+def delete_asset(asset_id: int, session: Session = Depends(get_session)):
+    asset = session.get(Asset, asset_id)
+    if not asset: raise HTTPException(404)
+    session.delete(asset)
+    session.commit()
+    return {"ok": True}
+
+@app.post("/api/liabilities/")
+def create_liability(liability: Liability, session: Session = Depends(get_session)):
+    session.add(liability)
+    session.commit()
+    session.refresh(liability)
+    return liability
+
+@app.delete("/api/liabilities/{liability_id}/")
+def delete_liability(liability_id: int, session: Session = Depends(get_session)):
+    liab = session.get(Liability, liability_id)
+    if not liab: raise HTTPException(404)
+    session.delete(liab)
+    session.commit()
+    return {"ok": True}
+
+
+# ==========================================
+# 6. ROTAS AVANÇADAS (AGREGADORES E IA)
 # ==========================================
 
 @app.get("/api/reports/")
@@ -467,5 +581,6 @@ Você verá uma interface gráfica interativa (Swagger UI) onde pode ver e testa
 | **GET** | `/api/leakage-analysis/` | Retorna sugestões de economia (IA Mockada). |
 | **GET** | `/api/predictive-analysis/` | Retorna dados para o gráfico de projeção futura. |
 | **GET** | `/api/interconnected-summary/` | Retorna metas ativas e dívidas urgentes em um único JSON. |
+| **GET** | `/api/net-worth/` | Retorna o dashboard completo de Patrimônio Líquido. |
 
 Este backend está 100% pronto para se comunicar com o Frontend Axxy Finance.

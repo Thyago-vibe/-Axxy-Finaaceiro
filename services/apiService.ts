@@ -1,5 +1,5 @@
 
-import { Transaction, Goal, UserProfile, Budget, Account, Category, Debt, Alert, LeakageAnalysis, ReportData, InterconnectedSummaryData, PredictionBaseData } from '../types';
+import { Transaction, Goal, UserProfile, Budget, Account, Category, Debt, Alert, LeakageAnalysis, ReportData, InterconnectedSummaryData, PredictionBaseData, NetWorthDashboardData, Asset, Liability } from '../types';
 
 const API_URL = 'http://localhost:8000/api';
 
@@ -16,7 +16,7 @@ export const apiService = {
   },
   updateProfile: async (profile: UserProfile): Promise<UserProfile> => {
     const res = await fetch(`${API_URL}/profile/`, {
-      method: 'POST',
+      method: 'POST', 
       headers,
       body: JSON.stringify(profile),
     });
@@ -37,10 +37,6 @@ export const apiService = {
     const res = await fetch(`${API_URL}/transactions/${id}/`, { method: 'DELETE' });
     return res.ok;
   },
-  updateTransaction: async (t: Transaction): Promise<Transaction> => {
-    const res = await fetch(`${API_URL}/transactions/${t.id}/`, { method: 'PUT', headers, body: JSON.stringify(t) });
-    return res.json();
-  },
 
   // --- Goals ---
   getGoals: async (): Promise<Goal[]> => {
@@ -53,8 +49,8 @@ export const apiService = {
     return res.json();
   },
   updateGoal: async (g: Goal): Promise<Goal> => {
-    const res = await fetch(`${API_URL}/goals/${g.id}/`, { method: 'PUT', headers, body: JSON.stringify(g) });
-    return res.json();
+     const res = await fetch(`${API_URL}/goals/${g.id}/`, { method: 'PUT', headers, body: JSON.stringify(g) });
+     return res.json();
   },
   deleteGoal: async (id: string): Promise<boolean> => {
     const res = await fetch(`${API_URL}/goals/${id}/`, { method: 'DELETE' });
@@ -71,14 +67,6 @@ export const apiService = {
     const res = await fetch(`${API_URL}/accounts/`, { method: 'POST', headers, body: JSON.stringify(a) });
     return res.json();
   },
-  updateAccount: async (a: Account): Promise<Account> => {
-    const res = await fetch(`${API_URL}/accounts/${a.id}/`, { method: 'PUT', headers, body: JSON.stringify(a) });
-    return res.json();
-  },
-  deleteAccount: async (id: string): Promise<boolean> => {
-    const res = await fetch(`${API_URL}/accounts/${id}/`, { method: 'DELETE' });
-    return res.ok;
-  },
 
   // --- Budgets ---
   getBudgets: async (): Promise<Budget[]> => {
@@ -88,10 +76,6 @@ export const apiService = {
   },
   createBudget: async (b: Budget): Promise<Budget> => {
     const res = await fetch(`${API_URL}/budgets/`, { method: 'POST', headers, body: JSON.stringify(b) });
-    return res.json();
-  },
-  updateBudget: async (b: Budget): Promise<Budget> => {
-    const res = await fetch(`${API_URL}/budgets/${b.id}/`, { method: 'PUT', headers, body: JSON.stringify(b) });
     return res.json();
   },
   deleteBudget: async (id: string): Promise<boolean> => {
@@ -106,15 +90,8 @@ export const apiService = {
     return res.json();
   },
   createCategory: async (c: Category): Promise<Category> => {
-    const res = await fetch(`${API_URL}/categories/`, { method: 'POST', headers, body: JSON.stringify(c) });
-    return res.json();
-  },
-  updateCategory: async (c: Category): Promise<Category> => {
-    const res = await fetch(`${API_URL}/categories/${c.id}/`, { method: 'PUT', headers, body: JSON.stringify(c) });
-    return res.json();
-  },
-  deleteCategory: async (id: string | number): Promise<void> => {
-    await fetch(`${API_URL}/categories/${id}/`, { method: 'DELETE' });
+     const res = await fetch(`${API_URL}/categories/`, { method: 'POST', headers, body: JSON.stringify(c) });
+     return res.json();
   },
 
   // --- Financial Health (Debts) ---
@@ -127,24 +104,16 @@ export const apiService = {
     const res = await fetch(`${API_URL}/debts/`, { method: 'POST', headers, body: JSON.stringify(d) });
     return res.json();
   },
-  updateDebt: async (d: Debt): Promise<Debt> => {
-    const res = await fetch(`${API_URL}/debts/${d.id}/`, { method: 'PUT', headers, body: JSON.stringify(d) });
-    return res.json();
-  },
-  deleteDebt: async (id: string): Promise<boolean> => {
-    const res = await fetch(`${API_URL}/debts/${id}/`, { method: 'DELETE' });
-    return res.ok;
-  },
-
+  
   // --- Alerts ---
   getAlerts: async (): Promise<Alert[]> => {
-    const res = await fetch(`${API_URL}/alerts/`);
-    if (!res.ok) return [];
-    return res.json();
+     const res = await fetch(`${API_URL}/alerts/`);
+     if (!res.ok) return [];
+     return res.json();
   },
   updateAlert: async (a: Alert): Promise<Alert> => {
-    const res = await fetch(`${API_URL}/alerts/${a.id}/`, { method: 'PUT', headers, body: JSON.stringify(a) });
-    return res.json();
+     const res = await fetch(`${API_URL}/alerts/${a.id}/`, { method: 'PUT', headers, body: JSON.stringify(a) });
+     return res.json();
   },
 
   // --- AI Leakage Analysis ---
@@ -174,5 +143,28 @@ export const apiService = {
     const res = await fetch(`${API_URL}/predictive-analysis/`);
     if (!res.ok) throw new Error('Failed to fetch predictive data');
     return res.json();
+  },
+
+  // --- Net Worth (Patrimônio Líquido) ---
+  getNetWorth: async (): Promise<NetWorthDashboardData> => {
+    const res = await fetch(`${API_URL}/net-worth/`);
+    if (!res.ok) throw new Error('Failed to fetch net worth data');
+    return res.json();
+  },
+  createAsset: async (asset: Asset): Promise<Asset> => {
+    const res = await fetch(`${API_URL}/assets/`, { method: 'POST', headers, body: JSON.stringify(asset) });
+    return res.json();
+  },
+  deleteAsset: async (id: string): Promise<boolean> => {
+    const res = await fetch(`${API_URL}/assets/${id}/`, { method: 'DELETE' });
+    return res.ok;
+  },
+  createLiability: async (l: Liability): Promise<Liability> => {
+    const res = await fetch(`${API_URL}/liabilities/`, { method: 'POST', headers, body: JSON.stringify(l) });
+    return res.json();
+  },
+  deleteLiability: async (id: string): Promise<boolean> => {
+    const res = await fetch(`${API_URL}/liabilities/${id}/`, { method: 'DELETE' });
+    return res.ok;
   }
 };
