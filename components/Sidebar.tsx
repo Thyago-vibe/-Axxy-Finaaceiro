@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { LayoutDashboard, Receipt, PieChart, Tag, Settings, Target, Sparkles, Wallet, Calculator, BellRing, HeartPulse, Share2, TrendingUp, X, Landmark } from 'lucide-react';
+import { LayoutDashboard, Receipt, PieChart, Tag, Settings, Target, Sparkles, Wallet, Calculator, BellRing, HeartPulse, Share2, TrendingUp, X, Landmark, Bot } from 'lucide-react';
 
 interface SidebarProps {
   currentView: string;
@@ -24,6 +24,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, isOpen, 
     { id: 'ai-assist', label: 'Análise de Vazamento', icon: Sparkles },
     { id: 'predictive-analysis', label: 'Análise Preditiva', icon: TrendingUp },
     { id: 'alerts', label: 'Alertas', icon: BellRing },
+    { id: 'ai-settings', label: 'Configurações da IA', icon: Bot },
     { id: 'settings', label: 'Configurações', icon: Settings },
   ];
 
@@ -36,14 +37,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, isOpen, 
     <>
       {/* Mobile Overlay */}
       {isOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/50 z-40 lg:hidden backdrop-blur-sm"
           onClick={onClose}
         />
       )}
 
       {/* Sidebar Container */}
-      <aside 
+      <aside
         className={`
           fixed top-0 left-0 h-screen w-64 bg-[#0b120f] border-r border-axxy-border 
           flex flex-col z-50 transition-transform duration-300 ease-in-out
@@ -57,7 +58,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, isOpen, 
             <h1 className="text-2xl font-bold text-white tracking-tight">Axxy</h1>
           </div>
           {/* Close Button (Mobile Only) */}
-          <button 
+          <button
             onClick={onClose}
             className="lg:hidden text-gray-400 hover:text-white"
           >
@@ -73,11 +74,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, isOpen, 
               <button
                 key={item.id}
                 onClick={() => handleItemClick(item.id)}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-medium text-left ${
-                  isActive
-                    ? 'bg-axxy-primary/10 text-axxy-primary'
-                    : 'text-gray-400 hover:bg-white/5 hover:text-white'
-                }`}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-medium text-left ${isActive
+                  ? 'bg-axxy-primary/10 text-axxy-primary'
+                  : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                  }`}
               >
                 <Icon size={20} className={`flex-shrink-0 ${isActive ? 'text-axxy-primary' : 'text-gray-400'}`} />
                 <span className="whitespace-nowrap truncate">{item.label}</span>

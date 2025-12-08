@@ -12,6 +12,7 @@ import { Reports } from './components/Reports';
 import { Settings } from './components/Settings';
 import { BehavioralAlerts } from './components/BehavioralAlerts';
 import { FinancialHealth } from './components/FinancialHealth';
+import { AISettings } from './components/AISettings';
 import { InterconnectedSummary } from './components/InterconnectedSummary';
 import { PredictiveAnalysis } from './components/PredictiveAnalysis';
 import { NetWorth } from './components/NetWorth';
@@ -129,6 +130,8 @@ const App: React.FC = () => {
         return <BehavioralAlerts />;
       case 'settings':
         return <Settings userProfile={userProfile} onUpdateProfile={handleUpdateProfile} />;
+      case 'ai-settings':
+        return <AISettings />;
       default:
         return <Dashboard transactions={transactions} />;
     }

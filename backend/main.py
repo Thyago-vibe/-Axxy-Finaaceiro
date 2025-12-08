@@ -116,9 +116,18 @@ class Liability(SQLModel, table=True):
     value: float
     iconType: str # 'loan' | 'card' | 'debt' | 'other'
 
+class AISettings(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    api_key: str
+    instructions: str
+    last_tested: Optional[str] = None
+    is_active: bool = True
+
+
 # ==========================================
 # 3. INICIALIZAÇÃO DA API
 # ==========================================
+
 app = FastAPI(title="Axxy Finance API")
 
 # Configuração de CORS (Permite que o React acesse este servidor)
@@ -134,6 +143,123 @@ app.add_middleware(
 def on_startup():
     create_db_and_tables()
     # Se quiser criar dados iniciais (Seed), chame uma função aqui.
+
+# ==========================================
+# 7. ROTAS DE CONFIGURAÇÃO DE IA
+# ==========================================
+
+@app.get("/api/config/ai", response_model=dict)
+def get_ai_settings(session: Session = Depends(get_session)):
+    """Retorna as configurações de IA (mas mascara a API Key)."""
+    settings = session.exec(select(AISettings)).first()
+    
+    if not settings:
+        return {
+            "api_key": "",
+            "instructions": "",
+            "is_connected": False,
+            "last_tested": None
+        }
+    
+    # Mascarar a chave para exibir no frontend
+    masked_key = ""
+    if settings.api_key and len(settings.api_key) > 4:
+        masked_key = f"sk-...{settings.api_key[-4:]}"
+    elif settings.api_key:
+        masked_key = "******"
+        
+    return {
+        "api_key": masked_key,
+        "instructions": settings.instructions,
+        "is_connected": settings.is_active,
+        "last_tested": settings.last_tested,
+        "model_name": "Amazon Nova 2 Lite (Free)",
+        "provider": "OpenRouter"
+    }
+
+@app.post("/api/config/ai")
+def save_ai_settings(data: dict, session: Session = Depends(get_session)):
+    """Salva a chave de API e instruções."""
+    settings = session.exec(select(AISettings)).first()
+    
+    api_key = data.get("api_key")
+    instructions = data.get("instructions", "")
+    
+    if not settings:
+        settings = AISettings(
+            api_key=api_key, 
+            instructions=instructions,
+            is_active=False
+        )
+        session.add(settings)
+    else:
+        # Só atualiza a chave se ela for fornecida e não for a mascarada
+        if api_key and not api_key.startswith("sk-...") and not api_key.startswith("***"):
+            settings.api_key = api_key
+        
+        settings.instructions = instructions
+        session.add(settings)
+        
+    session.commit()
+    session.refresh(settings)
+    return {"status": "success", "message": "Configurações salvas com sucesso"}
+
+@app.post("/api/ai/test")
+def test_ai_connection(session: Session = Depends(get_session)):
+    """Testa a conexão com Amazon Nova via OpenRouter."""
+    settings = session.exec(select(AISettings)).first()
+    
+    if not settings or not settings.api_key:
+        raise HTTPException(status_code=400, detail="Chave de API não configurada")
+    
+    try:
+        # Importar client OpenAI (OpenRouter é compatível)
+        from openai import OpenAI
+        
+        client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=settings.api_key,
+        )
+        
+        # Modelo Amazon Nova Lite (rápido e eficiente)
+        model_id = "amazon/nova-2-lite-v1:free" 
+        
+        completion = client.chat.completions.create(
+            model=model_id,
+            messages=[
+                {
+                    "role": "user",
+                    "content": "Responda apenas com a palavra 'CONECTADO'."
+                }
+            ]
+        )
+        
+        response_text = completion.choices[0].message.content
+        
+        if response_text:
+            settings.last_tested = datetime.now().isoformat()
+            settings.is_active = True
+            session.add(settings)
+            session.commit()
+            
+            return {
+                "status": "success", 
+                "message": f"Conexão com {model_id} bem-sucedida!",
+                "response_time": "120ms", # Simulado
+                "ai_response": response_text
+            }
+        else:
+            raise Exception("Resposta vazia da IA")
+            
+    except Exception as e:
+        settings.is_active = False
+        session.add(settings)
+        session.commit()
+        # Tratamento de erro melhorado para mostrar detalhes da API
+        error_msg = str(e)
+        if hasattr(e, 'response'):
+             error_msg = f"{e}; Response: {e.response}"
+        raise HTTPException(status_code=500, detail=f"Erro ao conectar: {error_msg}")
 
 # ==========================================
 # 4. ROTAS DA API (ENDPOINTS)

@@ -43,9 +43,9 @@ export const AssistedDecision: React.FC = () => {
   if (!data) return <div className="text-gray-500 text-center py-10">Não foi possível carregar a análise.</div>;
 
   return (
-    <div className="space-y-8 animate-fade-in max-w-5xl pb-10">
+    <div className="space-y-8 animate-fade-in max-w-5xl mx-auto pb-10">
       {/* Header */}
-      <div>
+      <div className="text-center">
         <h2 className="text-3xl font-bold text-white mb-2">Análise de Vazamento</h2>
         <p className="text-gray-400">Insights da IA para otimizar suas finanças.</p>
       </div>

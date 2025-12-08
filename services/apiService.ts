@@ -233,5 +233,28 @@ export const apiService = {
   deleteLiability: async (id: string): Promise<boolean> => {
     const res = await fetch(`${API_URL}/liabilities/${id}/`, { method: 'DELETE' });
     return res.ok;
+  },
+
+  // --- AI Settings ---
+  getAISettings: async (): Promise<{ api_key: string; instructions: string; is_connected: boolean; last_tested: string | null; model_name?: string; provider?: string }> => {
+    const res = await fetch(`${API_URL}/config/ai`);
+    if (!res.ok) throw new Error('Failed to fetch AI settings');
+    return res.json();
+  },
+  saveAISettings: async (data: { api_key: string; instructions: string }): Promise<any> => {
+    const res = await fetch(`${API_URL}/config/ai`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+  testAIConnection: async (): Promise<{ status: string; message: string; response_time: string; ai_response: string } | null> => {
+    const res = await fetch(`${API_URL}/ai/test`, { method: 'POST' });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Connection failed');
+    }
+    return res.json();
   }
 };
