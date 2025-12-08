@@ -256,5 +256,26 @@ export const apiService = {
       throw new Error(err.detail || 'Connection failed');
     }
     return res.json();
+  },
+
+  // Auto Allocate Budgets
+  autoAllocateBudgets: async (availableAmount: number): Promise<any> => {
+    const res = await fetch(`${API_URL}/budgets/allocate`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ availableAmount })
+    });
+    if (!res.ok) throw new Error('Failed to allocate budgets');
+    return res.json();
+  },
+
+  // Calculate AI Priorities
+  calculatePriorities: async (): Promise<any> => {
+    const res = await fetch(`${API_URL}/budgets/calculate-priorities`, {
+      method: 'POST',
+      headers
+    });
+    if (!res.ok) throw new Error('Failed to calculate priorities');
+    return res.json();
   }
 };

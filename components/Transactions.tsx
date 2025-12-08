@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Minus, Calendar, ChevronDown, Trash2, X, Sparkles, TrendingUp } from 'lucide-react';
+import { Plus, Minus, Calendar, ChevronDown, Trash2, X, Sparkles, TrendingUp, Zap, DollarSign } from 'lucide-react';
 import { Transaction, Account, Budget } from '../types';
 import { formatCurrency, formatCurrencyInput, parseCurrencyInput } from '../utils/formatters';
 import { apiService } from '../services/apiService';
@@ -16,6 +16,7 @@ interface TransactionsProps {
 export const Transactions: React.FC<TransactionsProps> = ({ transactions, accounts, onAddTransaction, onDeleteTransaction }) => {
   console.log('Transactions.tsx: Received transactions prop:', transactions);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDailyModalOpen, setIsDailyModalOpen] = useState(false);
 
   // Form State
   const [type, setType] = useState<'income' | 'expense'>('expense');
@@ -24,6 +25,19 @@ export const Transactions: React.FC<TransactionsProps> = ({ transactions, accoun
   const [category, setCategory] = useState('');
   const [accountId, setAccountId] = useState('');
   const [date, setDate] = useState('');
+
+  // Daily (Diária) State
+  const [dailyAmount, setDailyAmount] = useState('200,00'); // Default R$ 200
+  const [dailyDate, setDailyDate] = useState('');
+  const [dailyStartDate, setDailyStartDate] = useState('');
+  const [dailyEndDate, setDailyEndDate] = useState('');
+  const [dailyMode, setDailyMode] = useState<'single' | 'range'>('single');
+
+  // Smart Allocation State (Sugestão Inteligente de Alocação)
+  const [showAllocationSuggestion, setShowAllocationSuggestion] = useState(false);
+  const [allocationSuggestions, setAllocationSuggestions] = useState<any>(null);
+  const [loadingAllocation, setLoadingAllocation] = useState(false);
+  const [lastDailyAmount, setLastDailyAmount] = useState(0);
 
   // AI Suggestion State
   const [suggestedCategory, setSuggestedCategory] = useState('');
@@ -91,6 +105,120 @@ export const Transactions: React.FC<TransactionsProps> = ({ transactions, accoun
     setCategory(suggestedCategory);
   };
 
+  // Handler para adicionar diária rápida (hoje, R$ 200)
+  const handleQuickDaily = async () => {
+    const today = new Date().toISOString().split('T')[0];
+    const amount = parseCurrencyInput(dailyAmount);
+
+    const dailyTransaction: Omit<Transaction, 'id'> = {
+      accountId: accountId || accounts[0]?.id || undefined,
+      description: 'Diária de Trabalho',
+      amount: amount,
+      type: 'income',
+      date: today,
+      category: 'Salário',
+      status: 'completed'
+    };
+
+    onAddTransaction(dailyTransaction);
+    setIsDailyModalOpen(false);
+
+    // Buscar sugestões da IA
+    await fetchAllocationSuggestions(amount);
+  };
+
+  // Handler para adicionar diárias (uma ou múltiplas)
+  const handleAddDailies = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    let totalAmount = 0;
+
+    if (dailyMode === 'single') {
+      // Adicionar uma diária
+      const amount = parseCurrencyInput(dailyAmount);
+      totalAmount = amount;
+
+      const dailyTransaction: Omit<Transaction, 'id'> = {
+        accountId: accountId || accounts[0]?.id || undefined,
+        description: 'Diária de Trabalho',
+        amount: amount,
+        type: 'income',
+        date: dailyDate || new Date().toISOString().split('T')[0],
+        category: 'Salário',
+        status: 'completed'
+      };
+      onAddTransaction(dailyTransaction);
+    } else {
+      // Adicionar múltiplas diárias (intervalo)
+      if (!dailyStartDate || !dailyEndDate) return;
+
+      const start = new Date(dailyStartDate);
+      const end = new Date(dailyEndDate);
+      const currentDate = new Date(start);
+      const amount = parseCurrencyInput(dailyAmount);
+      let count = 0;
+
+      while (currentDate <= end) {
+        const dateStr = currentDate.toISOString().split('T')[0];
+        const dailyTransaction: Omit<Transaction, 'id'> = {
+          accountId: accountId || accounts[0]?.id || undefined,
+          description: 'Diária de Trabalho',
+          amount: amount,
+          type: 'income',
+          date: dateStr,
+          category: 'Salário',
+          status: 'completed'
+        };
+        onAddTransaction(dailyTransaction);
+        currentDate.setDate(currentDate.getDate() + 1);
+        count++;
+      }
+
+      totalAmount = amount * count;
+    }
+
+    // Reset and close
+    setIsDailyModalOpen(false);
+    setDailyDate('');
+    setDailyStartDate('');
+    setDailyEndDate('');
+    setDailyMode('single');
+
+    // Buscar sugestões da IA
+    await fetchAllocationSuggestions(totalAmount);
+  };
+
+  // Buscar sugestões de alocação da IA
+  const fetchAllocationSuggestions = async (amount: number) => {
+    setLastDailyAmount(amount);
+    setLoadingAllocation(true);
+    setShowAllocationSuggestion(true);
+
+    try {
+      const suggestions = await apiService.autoAllocateBudgets(amount);
+      setAllocationSuggestions(suggestions);
+    } catch (error) {
+      console.error('Erro ao buscar sugestões:', error);
+      setAllocationSuggestions(null);
+    } finally {
+      setLoadingAllocation(false);
+    }
+  };
+
+  // Aceitar sugestões de alocação
+  const handleAcceptAllocation = () => {
+    // Aqui você pode implementar a lógica para aplicar as sugestões aos budgets
+    // Por enquanto, apenas fecha o modal
+    setShowAllocationSuggestion(false);
+    setAllocationSuggestions(null);
+  };
+
+  // Rejeitar sugestões
+  const handleRejectAllocation = () => {
+    setShowAllocationSuggestion(false);
+    setAllocationSuggestions(null);
+  };
+
   const selectedBudget = budgets.find(b => b.category === category);
 
   return (
@@ -98,13 +226,22 @@ export const Transactions: React.FC<TransactionsProps> = ({ transactions, accoun
       {/* Header */}
       <div className="flex justify-between items-center">
         <h2 className="text-3xl font-bold text-white">Gerenciar Transações</h2>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="bg-axxy-primary text-axxy-bg font-bold px-6 py-3 rounded-xl hover:bg-axxy-primaryHover transition-colors shadow-lg shadow-green-900/20 flex items-center gap-2"
-        >
-          <Plus size={20} />
-          <span className="hidden sm:inline">Adicionar Nova Transação</span>
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setIsDailyModalOpen(true)}
+            className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-bold px-6 py-3 rounded-xl hover:from-yellow-600 hover:to-orange-600 transition-all shadow-lg shadow-orange-900/30 flex items-center gap-2"
+          >
+            <Zap size={20} />
+            <span className="hidden sm:inline">Adicionar Diária</span>
+          </button>
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="bg-axxy-primary text-axxy-bg font-bold px-6 py-3 rounded-xl hover:bg-axxy-primaryHover transition-colors shadow-lg shadow-green-900/20 flex items-center gap-2"
+          >
+            <Plus size={20} />
+            <span className="hidden sm:inline">Adicionar Nova Transação</span>
+          </button>
+        </div>
       </div>
 
       {/* Transactions Table */}
@@ -364,6 +501,326 @@ export const Transactions: React.FC<TransactionsProps> = ({ transactions, accoun
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Modal - Adicionar Diária */}
+      {isDailyModalOpen && createPortal(
+        <div className="fixed inset-0 bg-black/90 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-gradient-to-b from-[#2e2416] to-[#1c1510] border border-orange-500/20 rounded-3xl w-full max-w-lg shadow-[0_20px_50px_rgba(234,88,12,0.3)] animate-fade-in relative">
+            <button
+              onClick={() => setIsDailyModalOpen(false)}
+              className="absolute top-4 right-4 text-gray-500 hover:text-white"
+            >
+              <X size={24} />
+            </button>
+
+            <div className="p-8">
+              <div className="mb-6">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-yellow-500 to-orange-500 flex items-center justify-center shadow-lg">
+                    <Zap className="text-white" size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-bold text-white">Adicionar Diária</h3>
+                    <p className="text-gray-400 text-sm">Registro rápido de diárias de trabalho</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Botão Rápido */}
+              <button
+                onClick={handleQuickDaily}
+                className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-orange-900/30 transition-all mb-6 flex items-center justify-center gap-2"
+              >
+                <DollarSign size={20} />
+                Adicionar Diária de Hoje (R$ {dailyAmount})
+              </button>
+
+              <div className="relative mb-6">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-white/10"></div>
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-[#1c1510] px-2 text-gray-500">ou personalize</span>
+                </div>
+              </div>
+
+              <form onSubmit={handleAddDailies} className="space-y-5">
+                {/* Modo: Única ou Múltipla */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Modo</label>
+                  <div className="grid grid-cols-2 gap-4">
+                    <button
+                      type="button"
+                      onClick={() => setDailyMode('single')}
+                      className={`py-3 rounded-xl border transition-all ${dailyMode === 'single'
+                        ? 'bg-orange-500/10 border-orange-500 text-orange-400'
+                        : 'bg-transparent border-gray-700 text-gray-400 hover:border-gray-500'
+                        }`}
+                    >
+                      Diária Única
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDailyMode('range')}
+                      className={`py-3 rounded-xl border transition-all ${dailyMode === 'range'
+                        ? 'bg-orange-500/10 border-orange-500 text-orange-400'
+                        : 'bg-transparent border-gray-700 text-gray-400 hover:border-gray-500'
+                        }`}
+                    >
+                      Múltiplas Diárias
+                    </button>
+                  </div>
+                </div>
+
+                {/* Valor da Diária */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Valor da Diária</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">R$</span>
+                    <input
+                      type="text"
+                      value={dailyAmount}
+                      onChange={(e) => setDailyAmount(formatCurrencyInput(e.target.value))}
+                      placeholder="200,00"
+                      className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 pl-10 pr-4 focus:ring-1 focus:ring-orange-500 outline-none transition-colors"
+                    />
+                  </div>
+                </div>
+
+                {/* Conta */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Conta Destino</label>
+                  <div className="relative">
+                    <select
+                      value={accountId}
+                      onChange={(e) => setAccountId(e.target.value)}
+                      className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 px-4 appearance-none focus:ring-1 focus:ring-orange-500 outline-none transition-colors"
+                    >
+                      <option value="" disabled>Selecione uma conta</option>
+                      {accounts.map(acc => (
+                        <option key={acc.id} value={acc.id}>{acc.name} ({formatCurrency(acc.balance)})</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" size={18} />
+                  </div>
+                </div>
+
+                {/* Data (modo único) */}
+                {dailyMode === 'single' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Data</label>
+                    <input
+                      type="date"
+                      value={dailyDate}
+                      onChange={(e) => setDailyDate(e.target.value)}
+                      className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 px-4 focus:ring-1 focus:ring-orange-500 outline-none transition-colors [color-scheme:dark]"
+                    />
+                  </div>
+                )}
+
+                {/* Intervalo de Datas (modo múltiplo) */}
+                {dailyMode === 'range' && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">Data Inicial</label>
+                      <input
+                        type="date"
+                        value={dailyStartDate}
+                        onChange={(e) => setDailyStartDate(e.target.value)}
+                        className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 px-4 focus:ring-1 focus:ring-orange-500 outline-none transition-colors [color-scheme:dark]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">Data Final</label>
+                      <input
+                        type="date"
+                        value={dailyEndDate}
+                        onChange={(e) => setDailyEndDate(e.target.value)}
+                        className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 px-4 focus:ring-1 focus:ring-orange-500 outline-none transition-colors [color-scheme:dark]"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Preview de quantas diárias serão adicionadas */}
+                {dailyMode === 'range' && dailyStartDate && dailyEndDate && (
+                  <div className="bg-orange-500/10 border border-orange-500/20 rounded-xl p-4">
+                    <p className="text-sm text-orange-300">
+                      📅 Serão adicionadas <span className="font-bold">
+                        {Math.ceil((new Date(dailyEndDate).getTime() - new Date(dailyStartDate).getTime()) / (1000 * 60 * 60 * 24)) + 1}
+                      </span> diárias, totalizando <span className="font-bold">
+                        {formatCurrency(parseCurrencyInput(dailyAmount) * (Math.ceil((new Date(dailyEndDate).getTime() - new Date(dailyStartDate).getTime()) / (1000 * 60 * 60 * 24)) + 1))}
+                      </span>
+                    </p>
+                  </div>
+                )}
+
+                <div className="pt-4 flex gap-4">
+                  <button
+                    type="button"
+                    onClick={() => setIsDailyModalOpen(false)}
+                    className="flex-1 py-3 text-gray-400 font-medium hover:text-white transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-orange-900/30"
+                  >
+                    Adicionar {dailyMode === 'range' ? 'Diárias' : 'Diária'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Modal - Sugestão Inteligente de Alocação */}
+      {showAllocationSuggestion && createPortal(
+        <div className="fixed inset-0 bg-black/90 z-[10000] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-gradient-to-b from-[#1c2e26] via-[#15221c] to-[#0f1a16] border border-axxy-primary/30 rounded-3xl w-full max-w-2xl shadow-[0_20px_60px_rgba(34,197,94,0.4)] animate-fade-in relative">
+            <button
+              onClick={handleRejectAllocation}
+              className="absolute top-4 right-4 text-gray-500 hover:text-white z-10"
+            >
+              <X size={24} />
+            </button>
+
+            <div className="p-8">
+              {/* Header */}
+              <div className="mb-6">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-axxy-primary to-green-600 flex items-center justify-center shadow-lg shadow-green-900/40">
+                    <Sparkles className="text-white" size={28} />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-bold text-white">Sugestão Inteligente 🧠</h3>
+                    <p className="text-gray-400 text-sm">A IA analisou seus orçamentos</p>
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-r from-green-500/10 via-green-500/5 to-transparent border border-green-500/20 rounded-xl p-4">
+                  <p className="text-green-300 text-sm">
+                    💰 Você recebeu <span className="font-bold text-white">{formatCurrency(lastDailyAmount)}</span> em diária(s)!
+                    <br />
+                    Veja como a IA sugere distribuir esse valor entre seus orçamentos:
+                  </p>
+                </div>
+              </div>
+
+              {/* Loading State */}
+              {loadingAllocation && (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <div className="w-16 h-16 border-4 border-axxy-primary border-t-transparent rounded-full animate-spin mb-4"></div>
+                  <p className="text-gray-400">Analisando seus orçamentos...</p>
+                </div>
+              )}
+
+              {/* Suggestions */}
+              {!loadingAllocation && allocationSuggestions && (
+                <div className="space-y-4">
+                  {allocationSuggestions.allocations && allocationSuggestions.allocations.length > 0 ? (
+                    <>
+                      <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">Distribuição Recomendada:</h4>
+
+                      {allocationSuggestions.allocations.map((allocation: any, idx: number) => (
+                        <div
+                          key={idx}
+                          className="bg-[#0b120f] border border-white/10 rounded-2xl p-5 hover:border-axxy-primary/30 transition-colors"
+                        >
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-xl bg-axxy-primary/20 flex items-center justify-center">
+                                <DollarSign className="text-axxy-primary" size={20} />
+                              </div>
+                              <div>
+                                <h5 className="text-white font-bold">{allocation.category}</h5>
+                                <span className={`text-xs px-2 py-0.5 rounded-full ${allocation.priority === 'essencial' ? 'bg-red-500/20 text-red-400' :
+                                    allocation.priority === 'alto' ? 'bg-orange-500/20 text-orange-400' :
+                                      allocation.priority === 'medio' ? 'bg-blue-500/20 text-blue-400' :
+                                        'bg-gray-500/20 text-gray-400'
+                                  }`}>
+                                  {allocation.priority}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-2xl font-bold text-axxy-primary">
+                                {formatCurrency(allocation.suggested_amount)}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                Novo total: {formatCurrency(allocation.new_total)} ({allocation.new_percentage}%)
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Progress Bar */}
+                          <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full transition-all rounded-full ${allocation.new_percentage >= 100 ? 'bg-red-500' :
+                                  allocation.new_percentage >= 80 ? 'bg-yellow-500' :
+                                    'bg-axxy-primary'
+                                }`}
+                              style={{ width: `${Math.min(allocation.new_percentage, 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Total Summary */}
+                      <div className="bg-gradient-to-r from-axxy-primary/10 to-green-600/10 border border-axxy-primary/30 rounded-2xl p-5 mt-6">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm text-gray-400 mb-1">Total Alocado</p>
+                            <p className="text-2xl font-bold text-white">
+                              {formatCurrency(allocationSuggestions.total_allocated)}
+                            </p>
+                          </div>
+                          {allocationSuggestions.total_allocated < lastDailyAmount && (
+                            <div className="text-right">
+                              <p className="text-sm text-gray-400 mb-1">Sobra</p>
+                              <p className="text-lg font-bold text-yellow-400">
+                                {formatCurrency(lastDailyAmount - allocationSuggestions.total_allocated)}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-center py-10">
+                      <p className="text-gray-500">
+                        Nenhuma sugestão disponível. Crie orçamentos primeiro!
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Actions */}
+              {!loadingAllocation && (
+                <div className="pt-6 flex gap-4">
+                  <button
+                    onClick={handleRejectAllocation}
+                    className="flex-1 py-3 text-gray-400 font-medium hover:text-white transition-colors border border-gray-700 rounded-xl hover:border-gray-500"
+                  >
+                    Ignorar
+                  </button>
+                  <button
+                    onClick={handleAcceptAllocation}
+                    className="flex-1 bg-gradient-to-r from-axxy-primary to-green-600 hover:from-green-600 hover:to-axxy-primary text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-green-900/30"
+                  >
+                    Entendi! 👍
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>,

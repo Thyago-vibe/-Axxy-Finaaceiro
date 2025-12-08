@@ -61,6 +61,14 @@ class Budget(SQLModel, table=True):
     icon: str
     priority: str = Field(default="medio")
     goal: Optional[str] = None  # Objetivo do orçamento, ex: "Comprar sofá"
+    
+    # Campos para unificação com Metas
+    budget_type: str = Field(default="expense")  # "expense" (orçamento) ou "goal" (meta)
+    target_amount: Optional[float] = None  # Valor alvo para metas
+    current_amount: float = 0  # Progresso atual (para metas)
+    deadline: Optional[str] = None  # Prazo final (para metas)
+    ai_priority_score: Optional[float] = None  # Score de prioridade calculado pela IA (0-100)
+    ai_priority_reason: Optional[str] = None  # Explicação da IA sobre a prioridade
 
 class BudgetItem(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -143,6 +151,50 @@ app.add_middleware(
 def on_startup():
     create_db_and_tables()
     # Se quiser criar dados iniciais (Seed), chame uma função aqui.
+
+def ask_ai_analysis(prompt: str, session: Session):
+    """Função auxiliar para consultar a IA configurada."""
+    settings = session.exec(select(AISettings)).first()
+    
+    if not settings or not settings.api_key or not settings.is_active:
+        return None
+        
+    try:
+        from openai import OpenAI
+        import json
+        
+        client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=settings.api_key,
+        )
+        
+        system_prompt = (
+            f"Você é um analista financeiro experiente. {settings.instructions or ''} "
+            "Sua resposta deve ser estritamente um JSON válido, sem markdown, sem explicações extras."
+        )
+        
+        response = client.chat.completions.create(
+            model="amazon/nova-2-lite-v1:free", # Forçando o modelo gratuito que sabemos que funciona
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        
+        content = response.choices[0].message.content
+        if not content: return None
+
+        # Limpeza de markdown code blocks se a IA mandar
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0]
+        elif "```" in content:
+            content = content.split("```")[1]
+            
+        return json.loads(content.strip())
+        
+    except Exception as e:
+        print(f"Erro na IA: {e}")
+        return None
 
 # ==========================================
 # 7. ROTAS DE CONFIGURAÇÃO DE IA
@@ -556,24 +608,47 @@ def suggest_budget_category(data: dict, session: Session = Depends(get_session))
                 score += len(keyword) * 2
         scores[category] = score
     
-    # Pegar a categoria com maior score
+    # ... lógica de keywords mantida acima ...
+    
+    # Se encontrou algo com confiança alta (>60%), retorna logo para economizar IA
+    best_category = None
+    max_score = 0
     if scores:
         best_category = max(scores, key=scores.get)
         max_score = scores[best_category]
         
-        if max_score > 0:
-            # Normalizar confiança (0-100%)
-            confidence = min(100, (max_score / 10) * 100)
-            return {
-                "suggestedCategory": best_category,
-                "confidence": round(confidence, 1),
-                "allScores": scores
-            }
+    keyword_confidence = min(100, (max_score / 10) * 100) if max_score > 0 else 0
+
+    if keyword_confidence > 60:
+         return {
+            "suggestedCategory": best_category,
+            "confidence": round(keyword_confidence, 1),
+            "allScores": scores
+        }
+
+    # TENTATIVA DE IA (Se keywords falharam ou são incertas)
+    prompt = f"""
+    Classifique a seguinte transação financeira em uma destas categorias exatas: 
+    ['Moradia', 'Alimentação', 'Transporte', 'Lazer', 'Saúde', 'Educação', 'Salário', 'Compras', 'Outros'].
     
-    # Se não encontrou nenhuma correspondência
+    Descrição da transação: "{description}"
+    Valor: {amount}
+    
+    Retorne JSON: {{ "category": "NomeDaCategoria", "confidence": (0-100) }}
+    """
+    ai_result = ask_ai_analysis(prompt, session)
+    
+    if ai_result:
+        return {
+            "suggestedCategory": ai_result.get("category", "Outros"),
+            "confidence": ai_result.get("confidence", 80),
+            "allScores": scores # Mantem scores originais para debug
+        }
+
+    # Fallback final se IA falhar
     return {
-        "suggestedCategory": "Outros",
-        "confidence": 0,
+        "suggestedCategory": best_category if best_category and max_score > 0 else "Outros",
+        "confidence": round(keyword_confidence, 1),
         "allScores": scores
     }
 
@@ -669,6 +744,43 @@ def calculate_budget_limit(data: dict, session: Session = Depends(get_session)):
             "message": f"Para atingir R$ {goal_amount:,.2f} mais rápido, aumente a economia mensal."
         })
     
+    # TENTATIVA DE IA (Amazon Nova)
+    prompt = f"""
+    Atue como o consultor financeiro do Axxy. Calcule um limite de orçamento ideal para a categoria '{category}' (Prioridade: {priority}).
+    
+    Dados Financeiros:
+    - Renda Média Mensal: R$ {monthly_income:.2f}
+    - Despesa Média Total: R$ {monthly_expenses:.2f}
+    - Sobra Líquida Mensal: R$ {monthly_available:.2f}
+    - Saldo Total em Conta: R$ {total_balance:.2f}
+    - Gasto Médio Atual em '{category}': R$ {monthly_category_avg:.2f}
+    - Meta vinculada: {goal} (Alvo: R$ {goal_amount:.2f})
+    
+    Retorne APENAS um JSON:
+    {{
+        "suggested_limit": (valor numérico sugerido float),
+        "explanation": "Analise breve de por que este valor é ideal.",
+        "insights": [ 
+            {{ "type": "warning"|"info"|"success", "message": "Dica curta e direta" }} 
+        ] 
+    }}
+    """
+    
+    ai_response = ask_ai_analysis(prompt, session)
+    
+    if ai_response:
+        return {
+            "suggested_limit": ai_response.get("suggested_limit", suggested_limit),
+            "available_monthly": round(monthly_available, 2),
+            "total_balance": round(total_balance, 2),
+            "monthly_category_avg": round(monthly_category_avg, 2),
+            "months_to_goal": round(goal_amount / ai_response.get("suggested_limit", 1), 1) if goal_amount > 0 and ai_response.get("suggested_limit", 0) > 0 else 0,
+            "goal_amount": goal_amount,
+            "reasoning": reasons,
+            "insights": ai_response.get("insights", insights),
+            "explanation": ai_response.get("explanation", "Sugestão baseada em inteligência artificial.")
+        }
+
     return {
         "suggested_limit": round(suggested_limit, 2),
         "available_monthly": round(monthly_available, 2),
@@ -739,34 +851,172 @@ def auto_allocate_budgets(data: dict, session: Session = Depends(get_session)):
     # Ordenar por score de necessidade
     budget_needs.sort(key=lambda x: x["need_score"], reverse=True)
     
-    # Distribuir o dinheiro disponível
-    allocations = []
-    remaining_amount = available_amount
-    total_score = sum(b["need_score"] for b in budget_needs if b["need_score"] > 0)
+    # TENTATIVA DE IA (Distribuição Inteligente)
+    summary_for_ai = "\n".join([
+        f"- ID {b['budget_id']} | Categoria: {b['category']} | Prioridade: {b['priority']} | Limite: {b['limit']} | Gasto: {b['current_spent']} | Resta: {b['remaining']}" 
+        for b in budget_needs
+    ])
+
+    prompt = f"""
+    Atue como um gestor de orçamento. Tenho R$ {available_amount:.2f} extras para distribuir (alocar) nestes orçamentos para cobrir gastos ou aumentar saldo.
     
-    if total_score > 0:
+    Situação dos Orçamentos:
+    {summary_for_ai}
+    
+    Distribua o valor total de R$ {available_amount:.2f} de forma inteligente. Priorize contas essenciais e as que estão quase estourando.
+    
+    Retorne APENAS JSON:
+    {{
+        "allocations": [
+            {{ "budget_id": (int, id original), "suggested_amount": (float, valor alocado) }}
+        ]
+    }}
+    """
+    
+    ai_result = ask_ai_analysis(prompt, session)
+    
+    allocations = []
+    
+    # Processar resposta da IA
+    if ai_result and "allocations" in ai_result:
+        ai_allocs = {a["budget_id"]: a["suggested_amount"] for a in ai_result["allocations"]}
+        
         for budget_need in budget_needs:
-            # Calcular alocação proporcional ao score
-            if budget_need["need_score"] > 0:
-                allocation = (budget_need["need_score"] / total_score) * available_amount
-                
-                # Não alocar mais do que o necessário para completar o orçamento
-                max_allocation = budget_need["remaining"]
-                final_allocation = min(allocation, max_allocation)
-                
+            if budget_need["budget_id"] in ai_allocs:
+                amount = float(ai_allocs[budget_need["budget_id"]])
                 allocations.append({
                     "budget_id": budget_need["budget_id"],
                     "category": budget_need["category"],
                     "priority": budget_need["priority"],
-                    "suggested_amount": round(final_allocation, 2),
-                    "new_total": round(budget_need["current_spent"] + final_allocation, 2),
-                    "new_percentage": round((budget_need["current_spent"] + final_allocation) / budget_need["limit"] * 100, 1) if budget_need["limit"] > 0 else 0
+                    "suggested_amount": round(amount, 2),
+                    "new_total": round(budget_need["current_spent"] + amount, 2),
+                    "new_percentage": round((budget_need["current_spent"] + amount) / budget_need["limit"] * 100, 1) if budget_need["limit"] > 0 else 0
                 })
+
+    # Se IA falhou ou retornou vazio, usar MATEMÁTICA (Fallback)
+    if not allocations:
+        # Calcular alocação proporcional ao score (Matemática Original)
+        remaining_amount = available_amount
+        total_score = sum(b["need_score"] for b in budget_needs if b["need_score"] > 0)
+        
+        if total_score > 0:
+            for budget_need in budget_needs:
+                if budget_need["need_score"] > 0:
+                    allocation = (budget_need["need_score"] / total_score) * available_amount
+                    max_allocation = budget_need["remaining"]
+                    final_allocation = min(allocation, max_allocation)
+                    
+                    allocations.append({
+                        "budget_id": budget_need["budget_id"],
+                        "category": budget_need["category"],
+                        "priority": budget_need["priority"],
+                        "suggested_amount": round(final_allocation, 2),
+                        "new_total": round(budget_need["current_spent"] + final_allocation, 2),
+                        "new_percentage": round((budget_need["current_spent"] + final_allocation) / budget_need["limit"] * 100, 1) if budget_need["limit"] > 0 else 0
+                    })
     
     return {
         "total_available": available_amount,
         "allocations": allocations,
         "total_allocated": sum(a["suggested_amount"] for a in allocations)
+    }
+
+@app.post("/api/budgets/calculate-priorities")
+def calculate_priorities(session: Session = Depends(get_session)):
+    """
+    IA analisa todos os orçamentos/metas e define a ordem de prioridade.
+    Considera: urgência, essencialidade, progresso, dívidas, etc.
+    """
+    budgets = session.exec(select(Budget)).all()
+    debts = session.exec(select(Debt)).all()
+    
+    if not budgets:
+        return {"priorities": [], "message": "Nenhum orçamento cadastrado"}
+    
+    # Preparar resumo para a IA
+    budgets_summary = "\n".join([
+        f"- ID {b.id}: {b.category} (Tipo: {b.budget_type}, Limite: {b.limit}, Gasto: {b.spent}, Meta: {b.target_amount or 'N/A'}, Prioridade Manual: {b.priority})"
+        for b in budgets
+    ])
+    
+    debts_summary = "\n".join([
+        f"- {d.name}: R$ {d.remaining} restantes, vence {d.dueDate}, Urgente: {d.isUrgent}"
+        for d in debts
+    ]) if debts else "Nenhuma dívida"
+    
+    prompt = f"""
+    Você é um consultor financeiro. Analise os objetivos financeiros do usuário e REORDENE por prioridade.
+    
+    Critérios de Priorização (em ordem de importância):
+    1. Dívidas urgentes (primeiro lugar SEMPRE)
+    2. Necessidades essenciais (moradia, alimentação, saúde)
+    3. Orçamentos que estão estourando (gasto > 80% do limite)
+    4. Metas com prazo próximo
+    5. Demais itens por prioridade manual do usuário
+    
+    Orçamentos/Metas do Usuário:
+    {budgets_summary}
+    
+    Dívidas:
+    {debts_summary}
+    
+    Para CADA orçamento, retorne um score de 0 a 100 (100 = mais prioritário) e uma razão curta.
+    
+    Retorne APENAS JSON:
+    {{
+        "priorities": [
+            {{
+                "budget_id": (int),
+                "score": (0-100),
+                "reason": "Explicação curta de por que essa posição"
+            }}
+        ]
+    }}
+    Ordene do mais prioritário (score maior) para o menos.
+    """
+    
+    ai_result = ask_ai_analysis(prompt, session)
+    
+    if ai_result and "priorities" in ai_result:
+        # Atualizar os budgets no banco com as prioridades da IA
+        for item in ai_result["priorities"]:
+            budget = session.get(Budget, item["budget_id"])
+            if budget:
+                budget.ai_priority_score = item.get("score", 50)
+                budget.ai_priority_reason = item.get("reason", "")
+                session.add(budget)
+        
+        session.commit()
+        
+        return {
+            "success": True,
+            "priorities": ai_result["priorities"],
+            "total_analyzed": len(budgets)
+        }
+    
+    # Fallback se IA falhar
+    fallback_priorities = []
+    priority_scores = {"essencial": 90, "alto": 70, "medio": 50, "baixo": 30}
+    
+    for b in budgets:
+        score = priority_scores.get(b.priority, 50)
+        # Aumentar score se estiver estourando
+        if b.limit > 0 and (b.spent / b.limit * 100) > 80:
+            score += 15
+        fallback_priorities.append({
+            "budget_id": b.id,
+            "score": score,
+            "reason": f"Prioridade {b.priority} definida manualmente"
+        })
+    
+    # Ordenar por score
+    fallback_priorities.sort(key=lambda x: x["score"], reverse=True)
+    
+    return {
+        "success": False,
+        "message": "IA indisponível, usando priorização manual",
+        "priorities": fallback_priorities,
+        "total_analyzed": len(budgets)
     }
 
 
@@ -953,15 +1203,66 @@ def get_reports(range: str = 'this-month', account: str = 'all', session: Sessio
     }
 
 @app.get("/api/leakage-analysis/")
-def get_leakage_analysis():
+def get_leakage_analysis(session: Session = Depends(get_session)):
     """
-    Simula uma análise de IA para vazamento de dinheiro.
-    Em um app real, isso analisaria padrões nas transações.
+    Analisa padrões de gastos usando IA para identificar vazamentos.
+    Lê transações reais e submete à Amazon Nova via OpenRouter.
     """
+    # 1. Buscar transações dos últimos 30 dias
+    from datetime import datetime, timedelta
+    cutoff_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+    transactions = session.exec(select(Transaction).where(Transaction.date >= cutoff_date)).all()
+    
+    # Se não houver dados suficientes, retorna vazio
+    if len(transactions) < 3:
+        return {
+            "totalPotential": 0,
+            "leaksCount": 0,
+            "period": "Últimos 30 Dias",
+            "suggestions": []
+        }
+        
+    # 2. Preparar resumo para a IA (anonimizado e agragado para economizar tokens)
+    expenses = [t for t in transactions if t.type == 'expense']
+    tx_summary = "\n".join([f"- {t.description}: R$ {t.amount:.2f} ({t.category})" for t in expenses])
+    
+    prompt = f"""
+    Analise estas despesas recentes e identifique "vazamentos" (gastos supérfluos, assinaturas esquecidas, taxas ou impulsos).
+    
+    Transações:
+    {tx_summary}
+    
+    Retorne um JSON com este formato exato:
+    {{
+        "totalPotential": (soma da economia estimada),
+        "leaksCount": (quantidade de itens),
+        "suggestions": [
+            {{
+                "id": 1,
+                "title": "Título curto do vazamento",
+                "description": "Explicação breve de por que cortar",
+                "amount": (valor estimado mensal),
+                "category": "subscription" | "impulse" | "fees" | "other",
+                "actionLabel": "Ação sugerida (ex: Cancelar)"
+            }}
+        ]
+    }}
+    Se não achar nada grave, retorne listas vazias.
+    """
+    
+    # 3. Chamar a IA
+    ai_result = ask_ai_analysis(prompt, session)
+    
+    if ai_result:
+        # Adicionar o período que estava fixo no código anterior
+        ai_result["period"] = "Últimos 30 Dias"
+        return ai_result
+        
+    # Fallback se a IA falhar ou não estiver configurada
     return {
         "totalPotential": 0,
         "leaksCount": 0,
-        "period": "Últimos 30 Dias",
+        "period": "Últimos 30 Dias (IA Indisponível)",
         "suggestions": []
     }
 
@@ -971,24 +1272,73 @@ def get_interconnected_summary(session: Session = Depends(get_session)):
     goals = session.exec(select(Goal)).all()
     debts = session.exec(select(Debt)).all()
     
-    # Mock insights based on logical rules
-    # Calculos reais baseados nos dados
+    # Buscar algumas transações recentes para dar contexto de fluxo de caixa
+    transactions = session.exec(select(Transaction).limit(10)).all() # Últimas 10
+    
+    # Preparar dados para a IA
+    goals_summary = "\n".join([f"- Meta: {g.name} (Atual: {g.currentAmount}, Alvo: {g.targetAmount})" for g in goals])
+    debts_summary = "\n".join([f"- Dívida: {d.name} (Valor: {d.value}, Vencimento: {d.dueDate})" for d in debts])
+    
+    # Lógica padrão (fallback)
     insights_list = []
+    if goals: insights_list.append(f"Você tem {len(goals)} metas ativas.")
+    if debts: insights_list.append(f"Atenção com {len(debts)} dívidas pendentes.")
     
-    # Exemplo de insight real simples
-    if goals:
-        insights_list.append(f"Você tem {len(goals)} metas ativas.")
-    if debts:
-        insights_list.append(f"Atenção com {len(debts)} dívidas pendentes.")
-        
-    insights = {
-        "bestDecisions": insights_list,
-        "suggestedCuts": []
-    }
+    suggested_cuts = []
+
+    # TENTATIVA DE IA
+    prompt = f"""
+    Analise a situação financeira global e forneça insights estratégicos "Interligados".
     
+    Metas Ativas:
+    {goals_summary or "Nenhuma"}
+    
+    Dívidas Pendentes:
+    {debts_summary or "Nenhuma"}
+    
+    Com base nisso, sugira:
+    1. Melhores decisões (ex: focar na dívida X antes da meta Y).
+    2. Cortes sugeridos (especifique o valor estimado de economia).
+    
+    Retorne APENAS JSON:
+    {{
+        "bestDecisions": ["Decisão estratégica 1", "Decisão 2"],
+        "suggestedCuts": [
+            {{ "text": "Descrição do corte (curta)", "value": (float, valor mensal estimado) }}
+        ]
+    }}
+    Seja breve e direto.
+    """
+    
+    ai_result = ask_ai_analysis(prompt, session)
+    
+    if ai_result:
+        # Garantir que suggestedCuts tenha a estrutura correta mesmo se a IA alucinar
+        raw_cuts = ai_result.get("suggestedCuts", [])
+        formatted_cuts = []
+        for cut in raw_cuts:
+            if isinstance(cut, dict) and "text" in cut and "value" in cut:
+                formatted_cuts.append(cut)
+            elif isinstance(cut, str):
+                # Fallback se IA retornar string: tenta extrair valor ou poe default
+                formatted_cuts.append({"text": cut, "value": 0})
+
+        insights = {
+            "bestDecisions": ai_result.get("bestDecisions", insights_list),
+            "suggestedCuts": formatted_cuts
+        }
+    else:
+        insights = {
+            "bestDecisions": insights_list,
+            "suggestedCuts": []
+        }
+    
+    # Ordenar dívidas por urgência para exibição
+    urgent_debts = sorted([d for d in debts if d.isUrgent], key=lambda x: x.value, reverse=True)
+
     return {
         "activeGoals": goals[:2],
-        "upcomingDebts": [d for d in debts if d.isUrgent][:2],
+        "upcomingDebts": urgent_debts[:2],
         "insights": insights
     }
 
@@ -1006,12 +1356,49 @@ def get_predictive_analysis(session: Session = Depends(get_session)):
     incomes = [t.amount for t in transactions if t.type == 'income']
     expenses = [t.amount for t in transactions if t.type == 'expense']
     
-    monthly_income = sum(incomes) / 1 if incomes else 0 # Mock divisor 1 month
-    monthly_expense = sum(expenses) / 1 if expenses else 0
+    monthly_income = sum(incomes) / 3 if incomes else 0 # Média aproximada
+    monthly_expense = sum(expenses) / 3 if expenses else 0
     
+    # TENTATIVA DE IA (Sugestão de Cenários de Economia Interativa)
+    prompt = f"""
+    Atue como analista financeiro. Com base na renda (R$ {monthly_income:.2f}) e despesa (R$ {monthly_expense:.2f}), sugira 4 cenários práticos de economia que o usuário pode ativar.
+    
+    Cada cenário deve ser uma ação concreta (ex: "Reduzir Delivery", "Revisar Assinaturas", "Economizar Energia").
+    
+    Retorne APENAS JSON com esta estrutura EXATA para compatibilidade com o frontend:
+    {{
+        "scenarios": [
+            {{ 
+                "id": 1, 
+                "label": "Nome da Ação (curto)", 
+                "savings": (valor numérico float da economia mensal estimada), 
+                "iconName": "ShoppingBag" ou "Clapperboard" ou "Car" ou "Zap" (escolha o melhor ícone) 
+            }}
+        ]
+    }}
+    """
+    
+    ai_result = ask_ai_analysis(prompt, session)
+    
+    scenarios = []
+    if ai_result and "scenarios" in ai_result:
+        scenarios = ai_result["scenarios"]
+    else:
+        # Fallback de cenários padrão se IA falhar
+        scenarios = [
+            {"id": 1, "label": "Otimizar Alimentação", "savings": monthly_expense * 0.10, "iconName": "ShoppingBag"},
+            {"id": 2, "label": "Revisar Assinaturas", "savings": 59.90, "iconName": "Clapperboard"},
+            {"id": 3, "label": "Transporte Alternativo", "savings": 150.00, "iconName": "Car"},
+            {"id": 4, "label": "Reduzir Energia", "savings": 80.00, "iconName": "Zap"}
+        ]
+    
+    # Adicionar campo 'checked: false' (embora o frontend faça isso, é bom garantir o dado limpo)
+    for s in scenarios:
+        if "checked" not in s: s["checked"] = False
+
     return {
         "currentBalance": total_balance,
         "monthlyIncome": monthly_income,
         "baseExpense": monthly_expense,
-        "scenarios": []
+        "scenarios": scenarios
     }

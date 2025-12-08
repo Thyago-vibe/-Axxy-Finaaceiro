@@ -49,6 +49,14 @@ export interface Budget {
   icon: string;
   priority?: string; // 'essencial' | 'alto' | 'medio' | 'baixo'
   goal?: string | null; // Objetivo do orçamento
+
+  // Campos unificados com Metas
+  budget_type?: 'expense' | 'goal'; // Tipo: orçamento ou meta
+  target_amount?: number | null; // Valor alvo para metas
+  current_amount?: number; // Progresso atual (para metas)
+  deadline?: string | null; // Prazo final (para metas)
+  ai_priority_score?: number | null; // Score IA (0-100)
+  ai_priority_reason?: string | null; // Razão da prioridade
 }
 
 export interface BudgetItem {

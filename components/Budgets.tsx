@@ -42,11 +42,32 @@ export const Budgets: React.FC = () => {
   const loadData = async () => {
     try {
       const data = await apiService.getBudgets();
+      // Ordenar por score da IA se disponível
+      data.sort((a, b) => {
+        const scoreA = a.ai_priority_score ?? 50;
+        const scoreB = b.ai_priority_score ?? 50;
+        return scoreB - scoreA; // Maior score primeiro
+      });
       setBudgets(data);
     } catch (error) {
       console.error("Failed to load budgets", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Recalcular prioridades com IA
+  const [isRecalculating, setIsRecalculating] = useState(false);
+
+  const handleRecalculatePriorities = async () => {
+    setIsRecalculating(true);
+    try {
+      await apiService.calculatePriorities();
+      await loadData(); // Recarrega com novas prioridades
+    } catch (error) {
+      console.error("Failed to recalculate priorities", error);
+    } finally {
+      setIsRecalculating(false);
     }
   };
 
@@ -259,15 +280,25 @@ export const Budgets: React.FC = () => {
     <div className="space-y-8 animate-fade-in max-w-4xl mx-auto">
       <header className="flex flex-wrap justify-between items-center gap-4">
         <div>
-          <h2 className="text-3xl font-bold text-white tracking-tight">Orçamento Inteligente</h2>
-          <p className="text-gray-400 text-sm">Controle seus gastos com IA e subcategorias</p>
+          <h2 className="text-3xl font-bold text-white tracking-tight">Planejamento Inteligente</h2>
+          <p className="text-gray-400 text-sm">Orçamentos e metas unificados, priorizados pela IA</p>
         </div>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 bg-axxy-primary text-axxy-bg px-6 py-3 rounded-xl font-bold hover:bg-axxy-primaryHover transition-colors"
-        >
-          <Plus size={20} /> <span>Adicionar Orçamento</span>
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={handleRecalculatePriorities}
+            disabled={isRecalculating}
+            className="flex items-center gap-2 bg-gradient-to-r from-purple-500 to-blue-500 text-white px-5 py-3 rounded-xl font-bold hover:opacity-90 transition-opacity disabled:opacity-50"
+          >
+            <Sparkles size={18} className={isRecalculating ? 'animate-spin' : ''} />
+            <span className="hidden sm:inline">{isRecalculating ? 'Analisando...' : 'Reorganizar por IA'}</span>
+          </button>
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-2 bg-axxy-primary text-axxy-bg px-6 py-3 rounded-xl font-bold hover:bg-axxy-primaryHover transition-colors"
+          >
+            <Plus size={20} /> <span>Adicionar</span>
+          </button>
+        </div>
       </header>
 
       <div className="flex flex-col gap-4">
@@ -279,7 +310,15 @@ export const Budgets: React.FC = () => {
           const items = budgetItems[budget.id.toString()] || [];
 
           return (
-            <div key={budget.id} className="bg-axxy-card p-6 rounded-3xl border border-axxy-border">
+            <div key={budget.id} className="bg-axxy-card p-6 rounded-3xl border border-axxy-border relative overflow-hidden">
+              {/* AI Priority Score Badge */}
+              {budget.ai_priority_score && (
+                <div className="absolute top-3 right-3 flex items-center gap-1.5 bg-gradient-to-r from-purple-500/20 to-blue-500/20 border border-purple-500/30 px-3 py-1 rounded-full">
+                  <Sparkles size={12} className="text-purple-400" />
+                  <span className="text-xs font-bold text-purple-300">#{budgets.indexOf(budget) + 1}</span>
+                </div>
+              )}
+
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-4">
                   <button
@@ -292,9 +331,14 @@ export const Budgets: React.FC = () => {
                     <Icon size={24} />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <h3 className="text-white text-lg font-bold">{budget.category}</h3>
                       {getPriorityBadge(budget.priority)}
+                      {budget.budget_type === 'goal' && (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-500/10 text-yellow-400 font-semibold">
+                          Meta
+                        </span>
+                      )}
                       {items.length > 0 && (
                         <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 font-semibold">
                           {items.length} {items.length === 1 ? 'item' : 'itens'}
@@ -305,6 +349,11 @@ export const Budgets: React.FC = () => {
                     {budget.goal && (
                       <p className="text-purple-400 text-xs mt-1 flex items-center gap-1">
                         <Target size={12} /> {budget.goal}
+                      </p>
+                    )}
+                    {budget.ai_priority_reason && (
+                      <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                        <Sparkles size={10} className="text-purple-400" /> {budget.ai_priority_reason}
                       </p>
                     )}
                   </div>
