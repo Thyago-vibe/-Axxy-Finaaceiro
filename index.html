@@ -1,62 +1,153 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Axxy Finance</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: {
-              sans: ['Inter', 'sans-serif'],
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Axxy Finance</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+          colors: {
+            axxy: {
+              bg: '#0b120f', // Very dark green/black
+              card: '#15221c', // Slightly lighter card bg
+              primary: '#22c55e', // Vibrant Green
+              primaryHover: '#16a34a',
+              text: '#e2e8f0',
+              muted: '#94a3b8',
+              border: '#1e332a'
+            }
+          },
+          animation: {
+            'fade-in': 'fadeIn 0.5s ease-out forwards',
+          },
+          keyframes: {
+            fadeIn: {
+              '0%': { opacity: '0', transform: 'translateY(10px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
             },
-            colors: {
-              axxy: {
-                bg: '#0b120f', // Very dark green/black
-                card: '#15221c', // Slightly lighter card bg
-                primary: '#22c55e', // Vibrant Green
-                primaryHover: '#16a34a',
-                text: '#e2e8f0',
-                muted: '#94a3b8',
-                border: '#1e332a'
-              }
-            },
-            animation: {
-              'fade-in': 'fadeIn 0.5s ease-out forwards',
-            },
-            keyframes: {
-              fadeIn: {
-                '0%': { opacity: '0', transform: 'translateY(10px)' },
-                '100%': { opacity: '1', transform: 'translateY(0)' },
-              },
-            },
-          }
+          },
         }
       }
-    </script>
-    <style>
-      body {
-        background-color: #0b120f;
-        color: #e2e8f0;
-      }
-      /* Custom Scrollbar */
-      ::-webkit-scrollbar {
-        width: 8px;
-      }
-      ::-webkit-scrollbar-track {
-        background: #0b120f; 
-      }
-      ::-webkit-scrollbar-thumb {
-        background: #1e332a; 
-        border-radius: 4px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #22c55e; 
-      }
-    </style>
+    }
+  </script>
+  <style>
+    /* Theme CSS Variables */
+    :root,
+    [data-theme="dark"] {
+      --bg-primary: #0b120f;
+      --bg-card: #15221c;
+      --bg-input: #0b120f;
+      --text-primary: #e2e8f0;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --border-color: #1e332a;
+      --accent-primary: #22c55e;
+      --accent-hover: #16a34a;
+      --scrollbar-track: #0b120f;
+      --scrollbar-thumb: #1e332a;
+    }
+
+    [data-theme="light"] {
+      --bg-primary: #f8fafc;
+      --bg-card: #ffffff;
+      --bg-input: #f1f5f9;
+      --text-primary: #1e293b;
+      --text-secondary: #475569;
+      --text-muted: #94a3b8;
+      --border-color: #e2e8f0;
+      --accent-primary: #16a34a;
+      --accent-hover: #15803d;
+      --scrollbar-track: #f1f5f9;
+      --scrollbar-thumb: #cbd5e1;
+    }
+
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      transition: background-color 0.3s ease, color 0.3s ease;
+    }
+
+    /* Theme-aware overrides for hardcoded colors */
+    [data-theme="light"] .bg-axxy-bg,
+    [data-theme="light"] .bg-\[\#0b120f\] {
+      background-color: var(--bg-primary) !important;
+    }
+
+    [data-theme="light"] .bg-axxy-card,
+    [data-theme="light"] .bg-\[\#15221c\] {
+      background-color: var(--bg-card) !important;
+    }
+
+    [data-theme="light"] .text-white {
+      color: var(--text-primary) !important;
+    }
+
+    [data-theme="light"] .text-gray-400,
+    [data-theme="light"] .text-gray-500 {
+      color: var(--text-secondary) !important;
+    }
+
+    [data-theme="light"] .border-\[\#1e332a\],
+    [data-theme="light"] .border-axxy-border {
+      border-color: var(--border-color) !important;
+    }
+
+    [data-theme="light"] .from-\[\#1c2e26\],
+    [data-theme="light"] .to-\[\#15221c\] {
+      --tw-gradient-from: var(--bg-card) !important;
+      --tw-gradient-to: var(--bg-primary) !important;
+    }
+
+    /* Sidebar and navigation */
+    [data-theme="light"] nav,
+    [data-theme="light"] aside {
+      background-color: var(--bg-card) !important;
+      border-color: var(--border-color) !important;
+    }
+
+    /* Cards and containers */
+    [data-theme="light"] .rounded-3xl,
+    [data-theme="light"] .rounded-2xl,
+    [data-theme="light"] .rounded-xl {
+      background-color: var(--bg-card);
+      border-color: var(--border-color);
+    }
+
+    /* Inputs */
+    [data-theme="light"] input,
+    [data-theme="light"] select,
+    [data-theme="light"] textarea {
+      background-color: var(--bg-input) !important;
+      color: var(--text-primary) !important;
+      border-color: var(--border-color) !important;
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--scrollbar-track);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--scrollbar-thumb);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--accent-primary);
+    }
+  </style>
   <script type="importmap">
 {
   "imports": {
@@ -70,8 +161,10 @@
 }
 </script>
 </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/index.tsx"></script>
-  </body>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+
 </html>

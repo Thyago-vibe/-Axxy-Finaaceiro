@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
-import { Upload, Trash2, Puzzle, ChevronDown, Camera } from 'lucide-react';
+import { Upload, Trash2, Puzzle, ChevronDown, Camera, Sun, Moon } from 'lucide-react';
 import { UserProfile } from '../types';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface SettingsProps {
     userProfile: UserProfile;
@@ -8,6 +9,9 @@ interface SettingsProps {
 }
 
 export const Settings: React.FC<SettingsProps> = ({ userProfile, onUpdateProfile }) => {
+    // Theme hook
+    const { theme, toggleTheme } = useTheme();
+
     // State for toggles
     const [emailResumos, setEmailResumos] = useState(true);
     const [emailAlertas, setEmailAlertas] = useState(false);
@@ -151,6 +155,26 @@ export const Settings: React.FC<SettingsProps> = ({ userProfile, onUpdateProfile
                                 <option>Español</option>
                             </select>
                             <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" size={16} />
+                        </div>
+                    </div>
+
+                    {/* Theme Toggle */}
+                    <div className="pt-6 border-t border-white/5">
+                        <h4 className="text-white font-medium mb-1">Aparência</h4>
+                        <p className="text-sm text-gray-400 mb-6">Escolha entre tema claro ou escuro.</p>
+
+                        <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                                {theme === 'dark' ? (
+                                    <Moon size={20} className="text-purple-400" />
+                                ) : (
+                                    <Sun size={20} className="text-yellow-400" />
+                                )}
+                                <span className="text-gray-300 text-sm">
+                                    Tema {theme === 'dark' ? 'Escuro' : 'Claro'}
+                                </span>
+                            </div>
+                            <Toggle active={theme === 'light'} onToggle={toggleTheme} />
                         </div>
                     </div>
 

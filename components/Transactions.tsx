@@ -10,13 +10,15 @@ interface TransactionsProps {
   transactions: Transaction[];
   accounts: Account[];
   onAddTransaction: (t: Omit<Transaction, 'id'>) => void;
+  onUpdateTransaction: (id: string, t: Omit<Transaction, 'id'>) => void;
   onDeleteTransaction: (id: string) => void;
 }
 
-export const Transactions: React.FC<TransactionsProps> = ({ transactions, accounts, onAddTransaction, onDeleteTransaction }) => {
+export const Transactions: React.FC<TransactionsProps> = ({ transactions, accounts, onAddTransaction, onUpdateTransaction, onDeleteTransaction }) => {
   console.log('Transactions.tsx: Received transactions prop:', transactions);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDailyModalOpen, setIsDailyModalOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
   // Form State
   const [type, setType] = useState<'income' | 'expense'>('expense');
@@ -77,8 +79,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ transactions, accoun
     e.preventDefault();
     if (!amount || !description) return;
 
-    const newTransaction: Omit<Transaction, 'id'> = {
-      // id removed, backend handles it
+    const transactionData: Omit<Transaction, 'id'> = {
       accountId: accountId || undefined,
       description,
       amount: parseCurrencyInput(amount),
@@ -88,10 +89,17 @@ export const Transactions: React.FC<TransactionsProps> = ({ transactions, accoun
       status: 'completed'
     };
 
-    onAddTransaction(newTransaction);
+    if (editingTransaction) {
+      // Update existing transaction
+      onUpdateTransaction(String(editingTransaction.id), transactionData);
+    } else {
+      // Create new transaction
+      onAddTransaction(transactionData);
+    }
 
     // Close modal and reset
     setIsModalOpen(false);
+    setEditingTransaction(null);
     setAmount('');
     setDescription('');
     setCategory('');
@@ -276,16 +284,35 @@ export const Transactions: React.FC<TransactionsProps> = ({ transactions, accoun
                       <span className="bg-red-500/10 text-red-500 px-2.5 py-1 rounded-lg text-xs font-bold">Despesa</span>
                     )}
                   </td>
-                  <td className={`py - 4 text - right font - bold ${t.type === 'income' ? 'text-green-500' : 'text-red-500'} `}>
+                  <td className={`py-4 text-right font-bold ${t.type === 'income' ? 'text-green-500' : 'text-red-500'}`}>
                     {t.type === 'income' ? '+' : '-'} {formatCurrency(t.amount)}
                   </td>
                   <td className="py-4 text-center pr-6">
-                    <button
-                      onClick={() => onDeleteTransaction(t.id)}
-                      className="text-gray-500 hover:text-red-400 transition-colors p-2 hover:bg-red-400/10 rounded-lg"
-                    >
-                      <Trash2 size={18} />
-                    </button>
+                    <div className="flex items-center justify-center gap-2">
+                      <button
+                        onClick={() => {
+                          setEditingTransaction(t);
+                          setType(t.type);
+                          setAmount(formatCurrencyInput(t.amount.toFixed(2)));
+                          setDescription(t.description);
+                          setCategory(t.category);
+                          setAccountId(String(t.accountId || ''));
+                          setDate(t.date ? t.date.split('T')[0] : '');
+                          setIsModalOpen(true);
+                        }}
+                        className="text-gray-500 hover:text-axxy-primary transition-colors p-2 hover:bg-axxy-primary/10 rounded-lg"
+                        title="Editar transação"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /><path d="m15 5 4 4" /></svg>
+                      </button>
+                      <button
+                        onClick={() => onDeleteTransaction(String(t.id))}
+                        className="text-gray-500 hover:text-red-400 transition-colors p-2 hover:bg-red-400/10 rounded-lg"
+                        title="Excluir transação"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -314,7 +341,9 @@ export const Transactions: React.FC<TransactionsProps> = ({ transactions, accoun
 
             <div className="p-8">
               <div className="mb-6">
-                <h3 className="text-2xl font-bold text-white mb-2">Adicionar Nova Transação</h3>
+                <h3 className="text-2xl font-bold text-white mb-2">
+                  {editingTransaction ? 'Editar Transação' : 'Adicionar Nova Transação'}
+                </h3>
                 <p className="text-gray-400 text-sm">Preencha os detalhes abaixo.</p>
               </div>
 
@@ -325,20 +354,20 @@ export const Transactions: React.FC<TransactionsProps> = ({ transactions, accoun
                     <button
                       type="button"
                       onClick={() => setType('income')}
-                      className={`flex items - center justify - center gap - 2 py - 3 rounded - xl border transition - all ${type === 'income'
+                      className={`flex items-center justify-center gap-2 py-3 rounded-xl border transition-all ${type === 'income'
                         ? 'bg-axxy-primary/10 border-axxy-primary text-axxy-primary'
                         : 'bg-transparent border-gray-700 text-gray-400 hover:border-gray-500'
-                        } `}
+                        }`}
                     >
                       <Plus size={18} /> Receita
                     </button>
                     <button
                       type="button"
                       onClick={() => setType('expense')}
-                      className={`flex items - center justify - center gap - 2 py - 3 rounded - xl border transition - all ${type === 'expense'
+                      className={`flex items-center justify-center gap-2 py-3 rounded-xl border transition-all ${type === 'expense'
                         ? 'bg-axxy-primary/10 border-axxy-primary text-axxy-primary'
                         : 'bg-transparent border-gray-700 text-gray-400 hover:border-gray-500'
-                        } `}
+                        }`}
                     >
                       <Minus size={18} /> Despesa
                     </button>
@@ -357,7 +386,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ transactions, accoun
                       <option value="" disabled>Selecione uma conta</option>
                       {accounts.length > 0 ? (
                         accounts.map(acc => (
-                          <option key={acc.id} value={acc.id}>{acc.name} ({formatCurrency(acc.balance)})</option>
+                          <option key={acc.id} value={String(acc.id)}>{acc.name} ({formatCurrency(acc.balance)})</option>
                         ))
                       ) : (
                         <option value="" disabled>Nenhuma conta cadastrada</option>
@@ -488,7 +517,10 @@ export const Transactions: React.FC<TransactionsProps> = ({ transactions, accoun
                 <div className="pt-4 flex gap-4">
                   <button
                     type="button"
-                    onClick={() => setIsModalOpen(false)}
+                    onClick={() => {
+                      setIsModalOpen(false);
+                      setEditingTransaction(null);
+                    }}
                     className="flex-1 py-3 text-gray-400 font-medium hover:text-white transition-colors"
                   >
                     Cancelar
@@ -497,7 +529,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ transactions, accoun
                     type="submit"
                     className="flex-1 bg-axxy-primary hover:bg-axxy-primaryHover text-axxy-bg font-bold py-3 rounded-xl transition-colors shadow-lg shadow-green-900/20"
                   >
-                    Salvar Transação
+                    {editingTransaction ? 'Salvar Alterações' : 'Salvar Transação'}
                   </button>
                 </div>
               </form>
@@ -743,9 +775,9 @@ export const Transactions: React.FC<TransactionsProps> = ({ transactions, accoun
                               <div>
                                 <h5 className="text-white font-bold">{allocation.category}</h5>
                                 <span className={`text-xs px-2 py-0.5 rounded-full ${allocation.priority === 'essencial' ? 'bg-red-500/20 text-red-400' :
-                                    allocation.priority === 'alto' ? 'bg-orange-500/20 text-orange-400' :
-                                      allocation.priority === 'medio' ? 'bg-blue-500/20 text-blue-400' :
-                                        'bg-gray-500/20 text-gray-400'
+                                  allocation.priority === 'alto' ? 'bg-orange-500/20 text-orange-400' :
+                                    allocation.priority === 'medio' ? 'bg-blue-500/20 text-blue-400' :
+                                      'bg-gray-500/20 text-gray-400'
                                   }`}>
                                   {allocation.priority}
                                 </span>
@@ -765,8 +797,8 @@ export const Transactions: React.FC<TransactionsProps> = ({ transactions, accoun
                           <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
                             <div
                               className={`h-full transition-all rounded-full ${allocation.new_percentage >= 100 ? 'bg-red-500' :
-                                  allocation.new_percentage >= 80 ? 'bg-yellow-500' :
-                                    'bg-axxy-primary'
+                                allocation.new_percentage >= 80 ? 'bg-yellow-500' :
+                                  'bg-axxy-primary'
                                 }`}
                               style={{ width: `${Math.min(allocation.new_percentage, 100)}%` }}
                             />
