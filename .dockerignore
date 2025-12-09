@@ -1,0 +1,27 @@
+# Docker
+.docker
+docker-compose*.yml
+Dockerfile*
+
+# Dependencies
+node_modules
+backend/venv
+
+# Build output
+dist
+dist-ssr
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Database
+*.db
+
+# Logs
+*.log
+
+# IDE
+.vscode
+.idea
