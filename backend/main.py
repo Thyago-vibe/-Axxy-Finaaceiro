@@ -4,11 +4,12 @@ from sqlmodel import SQLModel, Field, Session, create_engine, select
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timedelta
 import random
+import os
 
 # ==========================================
 # 1. CONFIGURAÇÃO DO BANCO DE DADOS (SQLite)
 # ==========================================
-sqlite_file_name = "database.db"
+sqlite_file_name = os.getenv("DATABASE_FILE", "database.db")
 sqlite_url = f"sqlite:///{sqlite_file_name}"
 
 # Cria a conexão com o banco
@@ -138,10 +139,14 @@ class AISettings(SQLModel, table=True):
 
 app = FastAPI(title="Axxy Finance API")
 
-# Configuração de CORS (Permite que o React acesse este servidor)
+# Configuração de CORS - Origens permitidas
+# Em desenvolvimento usa localhost, em produção adicione seu domínio
+cors_origins_env = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+allowed_origins = [origin.strip() for origin in cors_origins_env.split(",")]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Em produção, troque '*' pelo domínio do seu site
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -386,6 +391,47 @@ def delete_transaction(transaction_id: int, session: Session = Depends(get_sessi
     session.commit()
     return {"ok": True}
 
+@app.put("/api/transactions/{transaction_id}/", response_model=Transaction)
+def update_transaction(transaction_id: int, transaction_data: Transaction, session: Session = Depends(get_session)):
+    """Atualiza uma transação existente."""
+    transaction = session.get(Transaction, transaction_id)
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transação não encontrada")
+    
+    # Reverter impacto da transação antiga no saldo (se houver conta vinculada)
+    if transaction.accountId:
+        account = session.get(Account, transaction.accountId)
+        if account:
+            if transaction.type == 'income':
+                account.balance -= transaction.amount
+            elif transaction.type == 'expense':
+                account.balance += transaction.amount
+            session.add(account)
+    
+    # Atualizar campos da transação
+    transaction.accountId = transaction_data.accountId
+    transaction.description = transaction_data.description
+    transaction.amount = transaction_data.amount
+    transaction.type = transaction_data.type
+    transaction.date = transaction_data.date
+    transaction.category = transaction_data.category
+    transaction.status = transaction_data.status
+    
+    # Aplicar novo impacto no saldo
+    if transaction.accountId:
+        account = session.get(Account, transaction.accountId)
+        if account:
+            if transaction.type == 'income':
+                account.balance += transaction.amount
+            elif transaction.type == 'expense':
+                account.balance -= transaction.amount
+            session.add(account)
+    
+    session.add(transaction)
+    session.commit()
+    session.refresh(transaction)
+    return transaction
+
 # --- METAS (GOALS) ---
 
 @app.get("/api/goals/", response_model=List[Goal])
@@ -468,6 +514,22 @@ def read_categories(session: Session = Depends(get_session)):
 
 @app.post("/api/categories/", response_model=Category)
 def create_category(category: Category, session: Session = Depends(get_session)):
+    session.add(category)
+    session.commit()
+    session.refresh(category)
+    return category
+
+@app.put("/api/categories/{category_id}/", response_model=Category)
+def update_category(category_id: int, category_data: Category, session: Session = Depends(get_session)):
+    """Atualiza uma categoria existente."""
+    category = session.get(Category, category_id)
+    if not category:
+        raise HTTPException(status_code=404, detail="Categoria não encontrada")
+    
+    category.name = category_data.name
+    category.type = category_data.type
+    category.color = category_data.color
+    
     session.add(category)
     session.commit()
     session.refresh(category)
@@ -1034,6 +1096,35 @@ def create_debt(debt: Debt, session: Session = Depends(get_session)):
     session.refresh(debt)
     return debt
 
+@app.put("/api/debts/{debt_id}/", response_model=Debt)
+def update_debt(debt_id: int, debt_data: Debt, session: Session = Depends(get_session)):
+    """Atualiza uma dívida existente."""
+    debt = session.get(Debt, debt_id)
+    if not debt:
+        raise HTTPException(status_code=404, detail="Dívida não encontrada")
+    
+    debt.name = debt_data.name
+    debt.remaining = debt_data.remaining
+    debt.monthly = debt_data.monthly
+    debt.dueDate = debt_data.dueDate
+    debt.status = debt_data.status
+    debt.isUrgent = debt_data.isUrgent
+    
+    session.add(debt)
+    session.commit()
+    session.refresh(debt)
+    return debt
+
+@app.delete("/api/debts/{debt_id}/")
+def delete_debt(debt_id: int, session: Session = Depends(get_session)):
+    """Deleta uma dívida."""
+    debt = session.get(Debt, debt_id)
+    if not debt:
+        raise HTTPException(status_code=404, detail="Dívida não encontrada")
+    session.delete(debt)
+    session.commit()
+    return {"ok": True}
+
 @app.delete("/api/debts/{debt_id}/")
 def delete_debt(debt_id: int, session: Session = Depends(get_session)):
     debt = session.get(Debt, debt_id)
@@ -1042,6 +1133,40 @@ def delete_debt(debt_id: int, session: Session = Depends(get_session)):
     session.delete(debt)
     session.commit()
     return {"ok": True}
+
+@app.get("/api/financial-health/summary/")
+def get_financial_health_summary(session: Session = Depends(get_session)):
+    """Retorna dados consolidados para os gráficos de Saúde Financeira."""
+    debts = session.exec(select(Debt)).all()
+    
+    # Totais por status
+    em_dia = [d for d in debts if d.status == "Em dia"]
+    pendente = [d for d in debts if d.status == "Pendente"]
+    atrasado = [d for d in debts if d.status == "Atrasado"]
+    
+    total_debt = sum(d.remaining or 0 for d in debts)
+    total_em_dia = sum(d.remaining or 0 for d in em_dia)
+    total_pendente = sum(d.remaining or 0 for d in pendente)
+    total_atrasado = sum(d.remaining or 0 for d in atrasado)
+    
+    pending_payments = sum(d.monthly or 0 for d in pendente)
+    
+    # Próximo vencimento
+    valid_dates = [d for d in debts if d.due_date]
+    valid_dates.sort(key=lambda x: x.due_date)
+    next_due = valid_dates[0].due_date if valid_dates else None
+    
+    return {
+        "totalDebt": total_debt,
+        "pendingPayments": pending_payments,
+        "nextDueDate": next_due,
+        "statusBreakdown": {
+            "emDia": {"count": len(em_dia), "total": total_em_dia},
+            "pendente": {"count": len(pendente), "total": total_pendente},
+            "atrasado": {"count": len(atrasado), "total": total_atrasado}
+        },
+        "debtCount": len(debts)
+    }
 
 @app.get("/api/alerts/", response_model=List[Alert])
 def read_alerts(session: Session = Depends(get_session)):
@@ -1063,6 +1188,288 @@ def delete_alert(alert_id: int, session: Session = Depends(get_session)):
     session.delete(alert)
     session.commit()
     return {"ok": True}
+
+@app.get("/api/behavioral-alerts/")
+def get_behavioral_alerts(session: Session = Depends(get_session)):
+    """Gera alertas comportamentais automáticos baseados na análise financeira."""
+    from datetime import datetime, timedelta
+    
+    alerts = []
+    today = datetime.now().date()
+    
+    # 1. Análise de Dívidas Atrasadas
+    debts = session.exec(select(Debt)).all()
+    atrasadas = [d for d in debts if d.status == "Atrasado"]
+    if atrasadas:
+        total_atrasado = sum(d.remaining or 0 for d in atrasadas)
+        alerts.append({
+            "id": "debt_overdue",
+            "type": "danger",
+            "icon": "alert-triangle",
+            "title": f"⚠️ {len(atrasadas)} dívida(s) atrasada(s)",
+            "message": f"Você tem R$ {total_atrasado:,.2f} em dívidas vencidas. Regularize para evitar juros.",
+            "priority": 1
+        })
+    
+    # 2. Dívidas prestes a vencer (próximos 7 dias)
+    pendentes = [d for d in debts if d.status == "Pendente" and d.due_date]
+    proximas = [d for d in pendentes if d.due_date and (d.due_date - today).days <= 7 and (d.due_date - today).days >= 0]
+    if proximas:
+        alerts.append({
+            "id": "debt_due_soon",
+            "type": "warning",
+            "icon": "clock",
+            "title": f"📅 {len(proximas)} pagamento(s) próximo(s)",
+            "message": f"Você tem pagamentos vencendo nos próximos 7 dias. Prepare-se!",
+            "priority": 2
+        })
+    
+    # 3. Análise de Gastos do Mês
+    transactions = session.exec(select(Transaction)).all()
+    first_day = today.replace(day=1)
+    
+    gastos_mes = [t for t in transactions if t.type == "expense" and t.date and t.date >= first_day]
+    receitas_mes = [t for t in transactions if t.type == "income" and t.date and t.date >= first_day]
+    
+    total_gastos = sum(t.amount for t in gastos_mes)
+    total_receitas = sum(t.amount for t in receitas_mes)
+    
+    # 4. Gastos maiores que receitas
+    if total_gastos > total_receitas and total_receitas > 0:
+        excesso = total_gastos - total_receitas
+        alerts.append({
+            "id": "spending_exceeds_income",
+            "type": "danger",
+            "icon": "trending-down",
+            "title": "🔴 Gastos excedem receitas",
+            "message": f"Este mês você gastou R$ {excesso:,.2f} a mais do que recebeu. Revise seus gastos!",
+            "priority": 1
+        })
+    
+    # 5. Alerta de endividamento alto
+    total_dividas = sum(d.remaining or 0 for d in debts)
+    if total_dividas > 0 and total_receitas > 0:
+        ratio = total_dividas / total_receitas
+        if ratio > 3:
+            alerts.append({
+                "id": "high_debt_ratio",
+                "type": "warning",
+                "icon": "alert-circle",
+                "title": "⚠️ Endividamento elevado",
+                "message": f"Suas dívidas representam {ratio:.1f}x sua renda mensal. Considere renegociar.",
+                "priority": 2
+            })
+    
+    # 6. Alerta positivo - Saúde financeira OK
+    if not atrasadas and total_gastos <= total_receitas:
+        alerts.append({
+            "id": "financial_health_ok",
+            "type": "success",
+            "icon": "check-circle",
+            "title": "🎉 Parabéns!",
+            "message": "Sua saúde financeira está em dia. Continue assim!",
+            "priority": 3
+        })
+    
+    # Ordenar por prioridade
+    alerts.sort(key=lambda x: x["priority"])
+    
+    return {
+        "alerts": alerts,
+        "summary": {
+            "totalDebts": len(debts),
+            "overdueDebts": len(atrasadas),
+            "monthlyExpenses": total_gastos,
+            "monthlyIncome": total_receitas,
+            "balance": total_receitas - total_gastos
+        }
+    }
+
+@app.get("/api/ai/financial-health/")
+def get_ai_financial_health_analysis(session: Session = Depends(get_session)):
+    """Análise de saúde financeira usando IA."""
+    from datetime import datetime
+    
+    # Coleta de dados
+    debts = session.exec(select(Debt)).all()
+    transactions = session.exec(select(Transaction)).all()
+    
+    today = datetime.now().date()
+    first_day = today.replace(day=1)
+    
+    # Calcular métricas
+    total_dividas = sum(d.remaining or 0 for d in debts)
+    atrasadas = [d for d in debts if d.status == "Atrasado"]
+    total_atrasado = sum(d.remaining or 0 for d in atrasadas)
+    
+    gastos_mes = sum(t.amount for t in transactions if t.type == "expense" and t.date and t.date >= first_day)
+    receitas_mes = sum(t.amount for t in transactions if t.type == "income" and t.date and t.date >= first_day)
+    
+    # Montar contexto para IA
+    debts_info = [
+        {"nome": d.name, "restante": d.remaining, "parcela": d.monthly, "status": d.status}
+        for d in debts[:10]  # Limitar para não exceder tokens
+    ]
+    
+    prompt = f"""
+Analise a saúde financeira do usuário com base nos dados:
+
+DÍVIDAS TOTAIS: R$ {total_dividas:,.2f}
+DÍVIDAS ATRASADAS: R$ {total_atrasado:,.2f} ({len(atrasadas)} itens)
+GASTOS DO MÊS: R$ {gastos_mes:,.2f}
+RECEITAS DO MÊS: R$ {receitas_mes:,.2f}
+SALDO DO MÊS: R$ {receitas_mes - gastos_mes:,.2f}
+
+LISTA DE DÍVIDAS:
+{debts_info}
+
+Retorne um JSON com:
+{{
+    "score": 0-100 (pontuação de saúde financeira),
+    "status": "critical" | "warning" | "good" | "excellent",
+    "summary": "Resumo em 1 frase da situação",
+    "recommendations": ["lista de 3-5 recomendações específicas"],
+    "priority_debt": "nome da dívida que deve priorizar pagar primeiro e porquê",
+    "savings_tip": "dica específica para economizar baseada nos dados"
+}}
+"""
+    
+    ai_result = ask_ai_analysis(prompt, session)
+    
+    if ai_result:
+        return {
+            "success": True,
+            "analysis": ai_result,
+            "data": {
+                "totalDebts": total_dividas,
+                "overdueDebts": total_atrasado,
+                "monthlyExpenses": gastos_mes,
+                "monthlyIncome": receitas_mes
+            }
+        }
+    
+    # Fallback se IA não disponível
+    score = 100
+    if total_atrasado > 0:
+        score -= 40
+    if gastos_mes > receitas_mes:
+        score -= 30
+    if total_dividas > receitas_mes * 3:
+        score -= 20
+    
+    status = "excellent" if score >= 80 else "good" if score >= 60 else "warning" if score >= 40 else "critical"
+    
+    return {
+        "success": True,
+        "analysis": {
+            "score": max(0, score),
+            "status": status,
+            "summary": "Análise automática baseada nos seus dados financeiros.",
+            "recommendations": [
+                "Priorize o pagamento de dívidas atrasadas",
+                "Mantenha seus gastos abaixo das receitas",
+                "Crie uma reserva de emergência",
+                "Renegocie dívidas com juros altos"
+            ],
+            "priority_debt": atrasadas[0].name if atrasadas else "Nenhuma dívida urgente",
+            "savings_tip": "Revise gastos recorrentes como assinaturas e serviços não utilizados"
+        },
+        "data": {
+            "totalDebts": total_dividas,
+            "overdueDebts": total_atrasado,
+            "monthlyExpenses": gastos_mes,
+            "monthlyIncome": receitas_mes
+        },
+        "ai_available": False
+    }
+
+@app.get("/api/ai/debt-priority/")
+def get_ai_debt_priority(session: Session = Depends(get_session)):
+    """IA analisa e prioriza dívidas para pagamento."""
+    
+    debts = session.exec(select(Debt)).all()
+    
+    if not debts:
+        return {
+            "success": True,
+            "message": "Nenhuma dívida cadastrada!",
+            "priorities": []
+        }
+    
+    # Montar dados das dívidas
+    debts_data = []
+    for d in debts:
+        debts_data.append({
+            "id": d.id,
+            "nome": d.name,
+            "valor_restante": d.remaining,
+            "parcela_mensal": d.monthly,
+            "status": d.status,
+            "vencimento": str(d.due_date) if d.due_date else "Não definido"
+        })
+    
+    prompt = f"""
+Analise as seguintes dívidas e crie uma ordem de prioridade para pagamento.
+Considere: status (atrasado é urgente), valor da parcela, impacto financeiro.
+
+DÍVIDAS:
+{debts_data}
+
+Retorne um JSON com:
+{{
+    "priorities": [
+        {{
+            "id": ID_DA_DIVIDA,
+            "nome": "nome da dívida",
+            "prioridade": 1 (mais urgente) a N (menos urgente),
+            "urgencia": "alta" | "media" | "baixa",
+            "motivo": "explicação clara de porquê priorizar esta",
+            "acao_recomendada": "o que fazer com esta dívida específica",
+            "impacto_se_ignorar": "consequência de não pagar"
+        }}
+    ],
+    "estrategia_geral": "resumo da estratégia de pagamento recomendada",
+    "economia_potencial": "quanto pode economizar seguindo as recomendações",
+    "tempo_estimado": "tempo estimado para quitar todas as dívidas seguindo o plano"
+}}
+"""
+    
+    ai_result = ask_ai_analysis(prompt, session)
+    
+    if ai_result:
+        return {
+            "success": True,
+            "analysis": ai_result,
+            "total_debts": len(debts),
+            "ai_powered": True
+        }
+    
+    # Fallback: priorizar por status e valor
+    fallback_priorities = []
+    status_order = {"Atrasado": 1, "Pendente": 2, "Em dia": 3}
+    sorted_debts = sorted(debts, key=lambda d: (status_order.get(d.status, 3), -(d.remaining or 0)))
+    
+    for i, d in enumerate(sorted_debts, 1):
+        urgencia = "alta" if d.status == "Atrasado" else "media" if d.status == "Pendente" else "baixa"
+        fallback_priorities.append({
+            "id": d.id,
+            "nome": d.name,
+            "prioridade": i,
+            "urgencia": urgencia,
+            "valor_restante": d.remaining,
+            "parcela": d.monthly,
+            "status": d.status,
+            "motivo": f"{'URGENTE: Dívida atrasada!' if d.status == 'Atrasado' else 'Pagamento pendente' if d.status == 'Pendente' else 'Em dia, manter controle'}",
+            "acao_recomendada": "Pagar imediatamente" if d.status == "Atrasado" else "Agendar pagamento" if d.status == "Pendente" else "Continuar pagando normalmente"
+        })
+    
+    return {
+        "success": True,
+        "priorities": fallback_priorities,
+        "estrategia_geral": "Priorize dívidas atrasadas, depois pendentes, por ordem de maior valor.",
+        "total_debts": len(debts),
+        "ai_powered": False
+    }
 
 # ==========================================
 # 5. ROTAS DE PATRIMÔNIO LÍQUIDO
@@ -1131,6 +1538,23 @@ def delete_asset(asset_id: int, session: Session = Depends(get_session)):
     session.commit()
     return {"ok": True}
 
+@app.put("/api/assets/{asset_id}/", response_model=Asset)
+def update_asset(asset_id: int, asset_data: Asset, session: Session = Depends(get_session)):
+    """Atualiza um ativo existente."""
+    asset = session.get(Asset, asset_id)
+    if not asset:
+        raise HTTPException(status_code=404, detail="Ativo não encontrado")
+    
+    asset.name = asset_data.name
+    asset.type = asset_data.type
+    asset.value = asset_data.value
+    asset.iconType = asset_data.iconType
+    
+    session.add(asset)
+    session.commit()
+    session.refresh(asset)
+    return asset
+
 @app.post("/api/liabilities/")
 def create_liability(liability: Liability, session: Session = Depends(get_session)):
     session.add(liability)
@@ -1145,6 +1569,23 @@ def delete_liability(liability_id: int, session: Session = Depends(get_session))
     session.delete(liab)
     session.commit()
     return {"ok": True}
+
+@app.put("/api/liabilities/{liability_id}/", response_model=Liability)
+def update_liability(liability_id: int, liability_data: Liability, session: Session = Depends(get_session)):
+    """Atualiza um passivo existente."""
+    liability = session.get(Liability, liability_id)
+    if not liability:
+        raise HTTPException(status_code=404, detail="Passivo não encontrado")
+    
+    liability.name = liability_data.name
+    liability.type = liability_data.type
+    liability.value = liability_data.value
+    liability.iconType = liability_data.iconType
+    
+    session.add(liability)
+    session.commit()
+    session.refresh(liability)
+    return liability
 
 
 # ==========================================
