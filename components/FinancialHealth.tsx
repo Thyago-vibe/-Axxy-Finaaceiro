@@ -327,9 +327,10 @@ export const FinancialHealth: React.FC = () => {
           </div>
 
           {(() => {
-            const emDiaVal = safeDebts.filter(d => d.status === 'Em dia').reduce((acc, d) => acc + (d.remaining || 0), 0);
-            const pendenteVal = safeDebts.filter(d => d.status === 'Pendente').reduce((acc, d) => acc + (d.remaining || 0), 0);
-            const atrasadoVal = safeDebts.filter(d => d.status === 'Atrasado').reduce((acc, d) => acc + (d.remaining || 0), 0);
+            const getDebtValue = (d: Debt) => (d.debtType === 'fixo' || d.remaining === 0) ? d.monthly : d.remaining;
+            const emDiaVal = safeDebts.filter(d => d.status === 'Em dia').reduce((acc, d) => acc + getDebtValue(d), 0);
+            const pendenteVal = safeDebts.filter(d => d.status === 'Pendente').reduce((acc, d) => acc + getDebtValue(d), 0);
+            const atrasadoVal = safeDebts.filter(d => d.status === 'Atrasado').reduce((acc, d) => acc + getDebtValue(d), 0);
 
             const totalValue = emDiaVal + pendenteVal + atrasadoVal || 1;
             const maxBar = Math.max(emDiaVal, pendenteVal, atrasadoVal) || 1;
@@ -490,7 +491,12 @@ export const FinancialHealth: React.FC = () => {
                     <p className="text-sm text-gray-400">{p.motivo}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-white font-bold">{formatCurrency(p.valor_restante || 0)}</p>
+                    {(() => {
+                      // Tentar encontrar a dívida original para pegar o valor mensal se for fixa
+                      const debtRef = safeDebts.find(d => d.name === p.nome);
+                      const displayValue = (debtRef?.debtType === 'fixo' || !p.valor_restante) ? (debtRef?.monthly || p.valor_restante || 0) : p.valor_restante;
+                      return <p className="text-white font-bold">{formatCurrency(displayValue)}</p>;
+                    })()}
                     <p className={`text-xs ${p.urgencia === 'alta' ? 'text-red-400' :
                       p.urgencia === 'media' ? 'text-yellow-400' : 'text-green-400'
                       }`}>

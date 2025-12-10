@@ -18,6 +18,7 @@
 ### 3. Correção da IA (Endpoints)
 - Corrigido erro de comparação de datas (String vs Date).
 - Corrigido nomes de campos inconsistentes (`due_date` -> `dueDate`).
+- **Melhoria:** Agora envia o `tipo` da dívida e informações de parcelas para a IA, permitindo recomendações mais contextuais (ex: diferenciar Aluguel de Empréstimo).
 - Agora a IA consegue ler as dívidas e transações corretamente.
 
 ## Como Validar

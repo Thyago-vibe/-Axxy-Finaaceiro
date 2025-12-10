@@ -1325,8 +1325,15 @@ def get_ai_financial_health_analysis(session: Session = Depends(get_session)):
     
     # Montar contexto para IA
     debts_info = [
-        {"nome": d.name, "restante": d.remaining, "parcela": d.monthly, "status": d.status}
-        for d in debts[:10]  # Limitar para não exceder tokens
+        {
+            "nome": d.name, 
+            "restante": d.remaining, 
+            "parcela": d.monthly, 
+            "status": d.status,
+            "tipo": getattr(d, 'debtType', 'parcelado'),
+            "parcelas": f"{getattr(d, 'currentInstallment', '?')}/{getattr(d, 'totalInstallments', '?')}" if getattr(d, 'debtType', 'parcelado') == "parcelado" else "Recorrente"
+        }
+        for d in debts[:15]  # Aumentando limite levemente pois é importante
     ]
     
     prompt = f"""
@@ -1423,7 +1430,9 @@ def get_ai_debt_priority(session: Session = Depends(get_session)):
             "valor_restante": d.remaining,
             "parcela_mensal": d.monthly,
             "status": d.status,
-            "vencimento": str(d.dueDate) if d.dueDate else "Não definido"
+            "vencimento": str(d.dueDate) if d.dueDate else "Não definido",
+            "tipo": getattr(d, 'debtType', 'parcelado'),
+            "info_parcelas": f"{getattr(d, 'currentInstallment', '?')}/{getattr(d, 'totalInstallments', '?')}" if getattr(d, 'debtType', 'parcelado') == "parcelado" else "Recorrente/Fixo"
         })
     
     prompt = f"""
