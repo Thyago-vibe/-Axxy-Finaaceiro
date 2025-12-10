@@ -4,6 +4,25 @@
 # =================================
 
 services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: axxy-postgres
+    environment:
+      - POSTGRES_USER=axxy
+      - POSTGRES_PASSWORD=axxy_secure_2024
+      - POSTGRES_DB=axxy_finance
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U axxy -d axxy_finance" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - axxy-network
+
   # Backend API (Python/FastAPI)
   backend:
     build:
@@ -13,19 +32,19 @@ services:
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     environment:
-      - DATABASE_FILE=${DATABASE_FILE:-database/database.db}
+      - DATABASE_URL=postgresql://axxy:axxy_secure_2024@postgres:5432/axxy_finance
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
-    volumes:
-      - ./data:/app/data
-      - db_data:/app/database
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/profile/')" ]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 15s
     networks:
       - axxy-network
 
@@ -54,7 +73,7 @@ services:
 
 # Volumes for persistence
 volumes:
-  db_data:
+  postgres_data:
     driver: local
 
 # Network for internal communication

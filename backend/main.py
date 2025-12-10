@@ -7,18 +7,25 @@ import random
 import os
 
 # ==========================================
-# 1. CONFIGURAÇÃO DO BANCO DE DADOS (SQLite)
+# 1. CONFIGURAÇÃO DO BANCO DE DADOS
 # ==========================================
-sqlite_file_name = os.getenv("DATABASE_FILE", "database/database.db")
-sqlite_url = f"sqlite:///{sqlite_file_name}"
+# Prioriza DATABASE_URL (Supabase/PostgreSQL) sobre DATABASE_FILE (SQLite)
+database_url = os.getenv("DATABASE_URL")
 
-# Garante que o diretório do banco exista
-db_dir = os.path.dirname(sqlite_file_name)
-if db_dir and not os.path.exists(db_dir):
-    os.makedirs(db_dir, exist_ok=True)
-
-# Cria a conexão com o banco
-engine = create_engine(sqlite_url, connect_args={"check_same_thread": False})
+if database_url:
+    # Usando Supabase/PostgreSQL
+    engine = create_engine(database_url)
+else:
+    # Fallback para SQLite local
+    sqlite_file_name = os.getenv("DATABASE_FILE", "database/database.db")
+    sqlite_url = f"sqlite:///{sqlite_file_name}"
+    
+    # Garante que o diretório do banco exista
+    db_dir = os.path.dirname(sqlite_file_name)
+    if db_dir and not os.path.exists(db_dir):
+        os.makedirs(db_dir, exist_ok=True)
+    
+    engine = create_engine(sqlite_url, connect_args={"check_same_thread": False})
 
 def create_db_and_tables():
     """Cria o arquivo do banco de dados e as tabelas automaticamente."""
