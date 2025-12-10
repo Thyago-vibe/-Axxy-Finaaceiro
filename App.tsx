@@ -86,6 +86,15 @@ const App: React.FC = () => {
     }
   };
 
+  const handleUpdateTransaction = async (id: string, updatedTransaction: Omit<Transaction, 'id'>) => {
+    try {
+      const updated = await apiService.updateTransaction(id, updatedTransaction);
+      setTransactions(prev => prev.map(t => String(t.id) === String(id) ? updated : t));
+    } catch (e) {
+      console.error("Failed to update transaction", e);
+    }
+  };
+
   const renderView = () => {
     if (isLoading) {
       return (
@@ -106,6 +115,7 @@ const App: React.FC = () => {
           transactions={transactions}
           accounts={accounts}
           onAddTransaction={handleAddTransaction}
+          onUpdateTransaction={handleUpdateTransaction}
           onDeleteTransaction={handleDeleteTransaction}
         />;
       case 'budgets':
