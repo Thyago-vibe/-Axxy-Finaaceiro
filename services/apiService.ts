@@ -243,6 +243,42 @@ export const apiService = {
     return handleApiResponse(res);
   },
 
+  // Cash Flow (Fluxo de Caixa)
+  getCashFlow: async (range: string): Promise<{ month: string; income: number; expense: number; balance: number }[]> => {
+    const params = new URLSearchParams({ date_range: range });
+    const res = await fetch(`${API_URL}/reports/cash-flow/?${params}`);
+    return handleApiResponse(res, []);
+  },
+
+  // Spending Trends (Tendências de Gastos)
+  getSpendingTrends: async (range: string): Promise<{ month: string; value: number; change: number }[]> => {
+    const params = new URLSearchParams({ date_range: range });
+    const res = await fetch(`${API_URL}/reports/spending-trends/?${params}`);
+    return handleApiResponse(res, []);
+  },
+
+  // Income Sources (Receitas por Fonte)
+  getIncomeSources: async (range: string): Promise<{ name: string; value: number; percentage: number; color: string }[]> => {
+    const params = new URLSearchParams({ date_range: range });
+    const res = await fetch(`${API_URL}/reports/income-sources/?${params}`);
+    return handleApiResponse(res, []);
+  },
+
+  // --- Backup & Restauração ---
+  exportBackup: async (): Promise<any> => {
+    const res = await fetch(`${API_URL}/backup/export`);
+    return handleApiResponse(res);
+  },
+
+  importBackup: async (backupData: any): Promise<{ success: boolean; message: string; imported?: any }> => {
+    const res = await fetch(`${API_URL}/backup/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(backupData),
+    });
+    return handleApiResponse(res);
+  },
+
   // --- Interconnected Summary ---
   getInterconnectedSummary: async (): Promise<InterconnectedSummaryData> => {
     const res = await fetch(`${API_URL}/interconnected-summary/`);

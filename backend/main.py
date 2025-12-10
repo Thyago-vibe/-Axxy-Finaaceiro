@@ -325,6 +325,211 @@ def test_ai_connection(session: Session = Depends(get_session)):
 # 4. ROTAS DA API (ENDPOINTS)
 # ==========================================
 
+# --- BACKUP & RESTAURAÇÃO ---
+
+@app.get("/api/backup/export")
+def export_backup(session: Session = Depends(get_session)):
+    """
+    Exporta todos os dados do banco em formato JSON para backup.
+    Retorna um arquivo JSON com todas as tabelas.
+    """
+    # Buscar todos os dados de cada tabela
+    profile = session.exec(select(UserProfile)).first()
+    accounts = session.exec(select(Account)).all()
+    transactions = session.exec(select(Transaction)).all()
+    budgets = session.exec(select(Budget)).all()
+    budget_items = session.exec(select(BudgetItem)).all()
+    goals = session.exec(select(Goal)).all()
+    debts = session.exec(select(Debt)).all()
+    categories = session.exec(select(Category)).all()
+    alerts = session.exec(select(Alert)).all()
+    assets = session.exec(select(Asset)).all()
+    liabilities = session.exec(select(Liability)).all()
+    
+    # Converter para dicionários
+    backup_data = {
+        "version": "1.0",
+        "appName": "Axxy Finance",
+        "exportedAt": datetime.now().isoformat(),
+        "data": {
+            "profile": {
+                "name": profile.name if profile else "Usuário Axxy",
+                "email": profile.email if profile else "usuario@email.com",
+                "avatar": profile.avatar if profile else ""
+            } if profile else None,
+            "accounts": [
+                {"id": a.id, "name": a.name, "type": a.type, "balance": a.balance, "color": a.color, "icon": a.icon}
+                for a in accounts
+            ],
+            "transactions": [
+                {"id": t.id, "accountId": t.accountId, "description": t.description, "amount": t.amount, 
+                 "type": t.type, "date": t.date, "category": t.category, "status": t.status}
+                for t in transactions
+            ],
+            "budgets": [
+                {"id": b.id, "category": b.category, "spent": b.spent, "limit": b.limit, "icon": b.icon,
+                 "priority": b.priority, "goal": b.goal, "budget_type": b.budget_type,
+                 "target_amount": b.target_amount, "current_amount": b.current_amount, "deadline": b.deadline,
+                 "ai_priority_score": b.ai_priority_score, "ai_priority_reason": b.ai_priority_reason}
+                for b in budgets
+            ],
+            "budget_items": [
+                {"id": bi.id, "budget_id": bi.budget_id, "name": bi.name, "target_amount": bi.target_amount,
+                 "spent": bi.spent, "completed": bi.completed}
+                for bi in budget_items
+            ],
+            "goals": [
+                {"id": g.id, "name": g.name, "currentAmount": g.currentAmount, "targetAmount": g.targetAmount,
+                 "deadline": g.deadline, "color": g.color, "imageUrl": g.imageUrl}
+                for g in goals
+            ],
+            "debts": [
+                {"id": d.id, "name": d.name, "remaining": d.remaining, "monthly": d.monthly,
+                 "dueDate": d.dueDate, "status": d.status, "isUrgent": d.isUrgent, "debtType": d.debtType,
+                 "totalInstallments": d.totalInstallments, "currentInstallment": d.currentInstallment}
+                for d in debts
+            ],
+            "categories": [
+                {"id": c.id, "name": c.name, "type": c.type, "color": c.color}
+                for c in categories
+            ],
+            "alerts": [
+                {"id": a.id, "category": a.category, "budget": a.budget, "threshold": a.threshold,
+                 "enabled": a.enabled, "iconName": a.iconName, "colorClass": a.colorClass}
+                for a in alerts
+            ],
+            "assets": [
+                {"id": a.id, "name": a.name, "type": a.type, "value": a.value, "iconType": a.iconType}
+                for a in assets
+            ],
+            "liabilities": [
+                {"id": l.id, "name": l.name, "type": l.type, "value": l.value, "iconType": l.iconType}
+                for l in liabilities
+            ]
+        }
+    }
+    
+    return backup_data
+
+
+@app.post("/api/backup/import")
+def import_backup(backup_data: dict, session: Session = Depends(get_session)):
+    """
+    Importa dados de um backup JSON.
+    ATENÇÃO: Isso substitui TODOS os dados existentes!
+    """
+    try:
+        # Validar estrutura básica
+        if "data" not in backup_data:
+            raise HTTPException(status_code=400, detail="Formato de backup inválido: campo 'data' não encontrado")
+        
+        data = backup_data["data"]
+        
+        # Limpar dados existentes (em ordem para respeitar foreign keys)
+        session.exec(select(BudgetItem)).all()
+        for item in session.exec(select(BudgetItem)).all():
+            session.delete(item)
+        
+        for table in [Transaction, Budget, Goal, Debt, Category, Alert, Asset, Liability, Account, UserProfile]:
+            for record in session.exec(select(table)).all():
+                session.delete(record)
+        
+        session.commit()
+        
+        # Importar perfil
+        if data.get("profile"):
+            p = data["profile"]
+            profile = UserProfile(name=p.get("name", "Usuário"), email=p.get("email", ""), avatar=p.get("avatar", ""))
+            session.add(profile)
+        
+        # Importar contas
+        account_id_map = {}  # Mapear IDs antigos para novos
+        for acc in data.get("accounts", []):
+            old_id = acc.pop("id", None)
+            new_account = Account(**acc)
+            session.add(new_account)
+            session.flush()  # Para obter o novo ID
+            if old_id:
+                account_id_map[old_id] = new_account.id
+        
+        # Importar transações (atualizando accountId)
+        for tx in data.get("transactions", []):
+            tx.pop("id", None)
+            old_account_id = tx.get("accountId")
+            if old_account_id and old_account_id in account_id_map:
+                tx["accountId"] = account_id_map[old_account_id]
+            session.add(Transaction(**tx))
+        
+        # Importar orçamentos
+        budget_id_map = {}
+        for bud in data.get("budgets", []):
+            old_id = bud.pop("id", None)
+            new_budget = Budget(**bud)
+            session.add(new_budget)
+            session.flush()
+            if old_id:
+                budget_id_map[old_id] = new_budget.id
+        
+        # Importar itens de orçamento
+        for bi in data.get("budget_items", []):
+            bi.pop("id", None)
+            old_budget_id = bi.get("budget_id")
+            if old_budget_id and old_budget_id in budget_id_map:
+                bi["budget_id"] = budget_id_map[old_budget_id]
+            session.add(BudgetItem(**bi))
+        
+        # Importar metas
+        for goal in data.get("goals", []):
+            goal.pop("id", None)
+            session.add(Goal(**goal))
+        
+        # Importar dívidas
+        for debt in data.get("debts", []):
+            debt.pop("id", None)
+            session.add(Debt(**debt))
+        
+        # Importar categorias
+        for cat in data.get("categories", []):
+            cat.pop("id", None)
+            session.add(Category(**cat))
+        
+        # Importar alertas
+        for alert in data.get("alerts", []):
+            alert.pop("id", None)
+            session.add(Alert(**alert))
+        
+        # Importar ativos
+        for asset in data.get("assets", []):
+            asset.pop("id", None)
+            session.add(Asset(**asset))
+        
+        # Importar passivos
+        for liability in data.get("liabilities", []):
+            liability.pop("id", None)
+            session.add(Liability(**liability))
+        
+        session.commit()
+        
+        return {
+            "success": True,
+            "message": "Backup importado com sucesso!",
+            "imported": {
+                "accounts": len(data.get("accounts", [])),
+                "transactions": len(data.get("transactions", [])),
+                "budgets": len(data.get("budgets", [])),
+                "goals": len(data.get("goals", [])),
+                "debts": len(data.get("debts", [])),
+                "categories": len(data.get("categories", []))
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=f"Erro ao importar backup: {str(e)}")
+
+
 # --- PERFIL DO USUÁRIO ---
 
 @app.get("/api/profile/", response_model=UserProfile)
@@ -1627,25 +1832,35 @@ def get_reports(range: str = 'this-month', account: str = 'all', session: Sessio
     """
     transactions = session.exec(select(Transaction)).all()
     
-    # Filtros simples (poderiam ser mais complexos com datas reais)
-    expense_txs = [t for t in transactions if t.type == 'expense']
+    # Mapear valores do frontend para dias
+    range_map = {
+        "this-month": 30,
+        "30-days": 30,
+        "this-year": 365,
+        "7d": 7,
+        "30d": 30,
+        "90d": 90,
+    }
+    days = range_map.get(range, 30)
+    cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
     
-    total_spent = sum(t.amount for t in expense_txs)
-    count = len(transactions)
+    # Filtrar por período e tipo (apenas despesas)
+    filtered = [t for t in transactions if t.date >= cutoff and t.type == 'expense']
+    
+    total_spent = sum(t.amount for t in filtered)
     
     # Agrupar por categoria
     category_map = {}
-    for t in expense_txs:
+    for t in filtered:
         category_map[t.category] = category_map.get(t.category, 0) + t.amount
         
     distribution = []
-    colors = ['#c084fc', '#fb923c', '#38bdf8', '#facc15', '#818cf8', '#ef4444']
-    i = 0
+    colors = ['#8b5cf6', '#22c55e', '#f59e0b', '#ef4444', '#3b82f6', '#ec4899', '#14b8a6', '#f97316']
     
     top_category_name = "N/A"
     top_category_value = 0
     
-    for cat, val in category_map.items():
+    for i, (cat, val) in enumerate(category_map.items()):
         if val > top_category_value:
             top_category_value = val
             top_category_name = cat
@@ -1653,22 +1868,153 @@ def get_reports(range: str = 'this-month', account: str = 'all', session: Sessio
         distribution.append({
             "name": cat,
             "value": val,
-            "percentage": (val / total_spent * 100) if total_spent > 0 else 0,
+            "percentage": round((val / total_spent * 100), 1) if total_spent > 0 else 0,
             "color": colors[i % len(colors)]
         })
-        i += 1
+    
+    # Calcular variação vs período anterior
+    prev_cutoff_start = (datetime.now() - timedelta(days=days * 2)).strftime("%Y-%m-%d")
+    prev_cutoff_end = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+    prev_filtered = [t for t in transactions if prev_cutoff_start <= t.date < prev_cutoff_end and t.type == "expense"]
+    prev_total = sum(t.amount for t in prev_filtered)
+    
+    change = round(((total_spent - prev_total) / prev_total) * 100, 1) if prev_total > 0 else 0
         
     return {
         "kpi": {
             "totalSpent": total_spent,
-            "totalSpentChange": 0, # Sem histórico real por enquanto
+            "totalSpentChange": change,
             "topCategory": top_category_name,
             "topCategoryValue": top_category_value,
-            "transactionCount": count,
-            "transactionCountChange": 0 # Sem histórico real por enquanto
+            "transactionCount": len(filtered),
+            "transactionCountChange": 0
         },
         "distribution": distribution
     }
+
+
+@app.get("/api/reports/cash-flow/")
+def get_cash_flow(date_range: str = "this-year", session: Session = Depends(get_session)):
+    """Retorna dados de fluxo de caixa (receitas vs despesas) por mês."""
+    transactions = session.exec(select(Transaction)).all()
+    
+    # Determinar número de meses baseado no range
+    range_months = {
+        "this-month": 1,
+        "30-days": 1,
+        "this-year": 12,
+        "7d": 1,
+        "30d": 1,
+        "90d": 3,
+    }
+    num_months = range_months.get(date_range, 6)
+    
+    # Gerar dados mensais
+    months_pt = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+    today = datetime.now()
+    result = []
+    
+    for idx in range(num_months - 1, -1, -1):
+        target_date = today - timedelta(days=30 * idx)
+        month_start = target_date.replace(day=1).strftime("%Y-%m")
+        month_label = months_pt[target_date.month - 1]
+        
+        month_income = sum(t.amount for t in transactions 
+                         if t.type == "income" and t.date.startswith(month_start))
+        month_expense = sum(t.amount for t in transactions 
+                          if t.type == "expense" and t.date.startswith(month_start))
+        
+        result.append({
+            "month": month_label,
+            "income": month_income,
+            "expense": month_expense,
+            "balance": month_income - month_expense
+        })
+    
+    return result
+
+
+@app.get("/api/reports/spending-trends/")
+def get_spending_trends(date_range: str = "this-year", session: Session = Depends(get_session)):
+    """Retorna tendência de gastos ao longo dos meses."""
+    transactions = session.exec(select(Transaction)).all()
+    
+    range_months = {
+        "this-month": 3,
+        "30-days": 3,
+        "this-year": 12,
+        "7d": 3,
+        "30d": 3,
+        "90d": 6,
+    }
+    num_months = range_months.get(date_range, 6)
+    
+    months_pt = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+    today = datetime.now()
+    result = []
+    prev_value = None
+    
+    for idx in range(num_months - 1, -1, -1):
+        target_date = today - timedelta(days=30 * idx)
+        month_start = target_date.replace(day=1).strftime("%Y-%m")
+        month_label = months_pt[target_date.month - 1]
+        
+        month_expense = sum(t.amount for t in transactions 
+                          if t.type == "expense" and t.date.startswith(month_start))
+        
+        # Calcular variação percentual
+        if prev_value is not None and prev_value > 0:
+            change = round(((month_expense - prev_value) / prev_value) * 100, 1)
+        else:
+            change = 0
+        
+        result.append({
+            "month": month_label,
+            "value": month_expense,
+            "change": change
+        })
+        prev_value = month_expense
+    
+    return result
+
+
+@app.get("/api/reports/income-sources/")
+def get_income_sources(date_range: str = "this-month", session: Session = Depends(get_session)):
+    """Retorna receitas agrupadas por categoria/fonte."""
+    transactions = session.exec(select(Transaction)).all()
+    
+    range_map = {
+        "this-month": 30,
+        "30-days": 30,
+        "this-year": 365,
+        "7d": 7,
+        "30d": 30,
+        "90d": 90,
+    }
+    days = range_map.get(date_range, 30)
+    cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+    
+    filtered = [t for t in transactions if t.date >= cutoff and t.type == "income"]
+    
+    categories = {}
+    total_income = sum(t.amount for t in filtered)
+    colors = ['#22c55e', '#3b82f6', '#8b5cf6', '#f59e0b', '#14b8a6', '#ec4899']
+    
+    for t in filtered:
+        cat = t.category or "Outros"
+        categories[cat] = categories.get(cat, 0) + t.amount
+    
+    result = []
+    for i, (cat, val) in enumerate(categories.items()):
+        result.append({
+            "name": cat,
+            "value": val,
+            "percentage": round((val / total_income) * 100, 1) if total_income > 0 else 0,
+            "color": colors[i % len(colors)]
+        })
+    
+    return result
+
 
 @app.get("/api/leakage-analysis/")
 def get_leakage_analysis(session: Session = Depends(get_session)):

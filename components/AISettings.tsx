@@ -235,9 +235,9 @@ export const AISettings: React.FC = () => {
                     <div className="flex flex-col items-start gap-4">
                         <button
                             onClick={handleTestConnection}
-                            disabled={isLoading || !isConnected}
+                            disabled={isLoading || !apiKey}
                             className={`flex items-center justify-center gap-2 rounded-lg h-10 px-6 font-bold text-sm transition-colors
-                                ${isConnected
+                                ${apiKey
                                     ? 'bg-axxy-primary/10 text-axxy-primary hover:bg-axxy-primary/20 border border-axxy-primary/30'
                                     : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'}
                             `}
@@ -250,7 +250,7 @@ export const AISettings: React.FC = () => {
                             {isLoading ? 'Testando...' : 'Testar Conexão'}
                         </button>
 
-                        {!isConnected && !isLoading && (
+                        {!apiKey && !isLoading && (
                             <p className="text-xs text-yellow-500 flex items-center gap-1">
                                 <AlertTriangle size={12} /> Salve uma chave válida primeiro para testar.
                             </p>

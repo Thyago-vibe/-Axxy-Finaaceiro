@@ -13,12 +13,12 @@ services:
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     environment:
-      - DATABASE_FILE=${DATABASE_FILE:-database.db}
+      - DATABASE_FILE=${DATABASE_FILE:-database/database.db}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
     volumes:
       - ./data:/app/data
-      - db_data:/app
+      - db_data:/app/database
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/profile/')" ]

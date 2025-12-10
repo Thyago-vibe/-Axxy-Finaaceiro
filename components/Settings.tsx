@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Upload, Trash2, Puzzle, ChevronDown, Camera, Sun, Moon } from 'lucide-react';
 import { UserProfile } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
+import { BackupRestore } from './BackupRestore';
 
 interface SettingsProps {
     userProfile: UserProfile;
@@ -230,6 +231,12 @@ export const Settings: React.FC<SettingsProps> = ({ userProfile, onUpdateProfile
                         <Toggle active={twoFactor} onToggle={() => setTwoFactor(!twoFactor)} />
                     </div>
                 </div>
+            </section>
+
+            {/* Backup & Restauração */}
+            <section>
+                <h3 className="text-xl font-bold text-white mb-6">Backup & Restauração</h3>
+                <BackupRestore />
             </section>
 
             {/* Integrations */}
