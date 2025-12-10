@@ -199,7 +199,7 @@ export const apiService = {
     const res = await fetch(`${API_URL}/debts/`);
     return handleApiResponse(res, []);
   },
-  createDebt: async (d: Debt): Promise<Debt> => {
+  createDebt: async (d: Omit<Debt, 'id'>): Promise<Debt> => {
     const res = await fetch(`${API_URL}/debts/`, { method: 'POST', headers, body: JSON.stringify(d) });
     return handleApiResponse(res);
   },

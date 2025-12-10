@@ -101,6 +101,9 @@ class Debt(SQLModel, table=True):
     dueDate: str
     status: str
     isUrgent: bool = False
+    debtType: str = "parcelado"
+    totalInstallments: Optional[int] = None
+    currentInstallment: Optional[int] = None
 
 class Alert(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -1109,6 +1112,9 @@ def update_debt(debt_id: int, debt_data: Debt, session: Session = Depends(get_se
     debt.dueDate = debt_data.dueDate
     debt.status = debt_data.status
     debt.isUrgent = debt_data.isUrgent
+    debt.debtType = debt_data.debtType
+    debt.totalInstallments = debt_data.totalInstallments
+    debt.currentInstallment = debt_data.currentInstallment
     
     session.add(debt)
     session.commit()
@@ -1152,9 +1158,9 @@ def get_financial_health_summary(session: Session = Depends(get_session)):
     pending_payments = sum(d.monthly or 0 for d in pendente)
     
     # Próximo vencimento
-    valid_dates = [d for d in debts if d.due_date]
-    valid_dates.sort(key=lambda x: x.due_date)
-    next_due = valid_dates[0].due_date if valid_dates else None
+    valid_dates = [d for d in debts if d.dueDate]
+    valid_dates.sort(key=lambda x: x.dueDate)
+    next_due = valid_dates[0].dueDate if valid_dates else None
     
     return {
         "totalDebt": total_debt,
@@ -1212,8 +1218,16 @@ def get_behavioral_alerts(session: Session = Depends(get_session)):
         })
     
     # 2. Dívidas prestes a vencer (próximos 7 dias)
-    pendentes = [d for d in debts if d.status == "Pendente" and d.due_date]
-    proximas = [d for d in pendentes if d.due_date and (d.due_date - today).days <= 7 and (d.due_date - today).days >= 0]
+    pendentes = [d for d in debts if d.status == "Pendente" and d.dueDate]
+    proximas = []
+    for d in pendentes:
+        try:
+            due_date = datetime.strptime(d.dueDate.split('T')[0], "%Y-%m-%d").date()
+            days_until = (due_date - today).days
+            if 0 <= days_until <= 7:
+                proximas.append(d)
+        except (ValueError, AttributeError):
+            pass
     if proximas:
         alerts.append({
             "id": "debt_due_soon",
@@ -1227,9 +1241,11 @@ def get_behavioral_alerts(session: Session = Depends(get_session)):
     # 3. Análise de Gastos do Mês
     transactions = session.exec(select(Transaction)).all()
     first_day = today.replace(day=1)
+    first_day_str = first_day.strftime("%Y-%m-%d")
     
-    gastos_mes = [t for t in transactions if t.type == "expense" and t.date and t.date >= first_day]
-    receitas_mes = [t for t in transactions if t.type == "income" and t.date and t.date >= first_day]
+    # Comparar datas como strings (formato YYYY-MM-DD é comparável)
+    gastos_mes = [t for t in transactions if t.type == "expense" and t.date and t.date >= first_day_str]
+    receitas_mes = [t for t in transactions if t.type == "income" and t.date and t.date >= first_day_str]
     
     total_gastos = sum(t.amount for t in gastos_mes)
     total_receitas = sum(t.amount for t in receitas_mes)
@@ -1296,14 +1312,16 @@ def get_ai_financial_health_analysis(session: Session = Depends(get_session)):
     
     today = datetime.now().date()
     first_day = today.replace(day=1)
+    first_day_str = first_day.strftime("%Y-%m-%d")  # Converter para string para comparar
     
     # Calcular métricas
     total_dividas = sum(d.remaining or 0 for d in debts)
     atrasadas = [d for d in debts if d.status == "Atrasado"]
     total_atrasado = sum(d.remaining or 0 for d in atrasadas)
     
-    gastos_mes = sum(t.amount for t in transactions if t.type == "expense" and t.date and t.date >= first_day)
-    receitas_mes = sum(t.amount for t in transactions if t.type == "income" and t.date and t.date >= first_day)
+    # Comparar datas como strings (formato YYYY-MM-DD é comparável)
+    gastos_mes = sum(t.amount for t in transactions if t.type == "expense" and t.date and t.date >= first_day_str)
+    receitas_mes = sum(t.amount for t in transactions if t.type == "income" and t.date and t.date >= first_day_str)
     
     # Montar contexto para IA
     debts_info = [
@@ -1405,7 +1423,7 @@ def get_ai_debt_priority(session: Session = Depends(get_session)):
             "valor_restante": d.remaining,
             "parcela_mensal": d.monthly,
             "status": d.status,
-            "vencimento": str(d.due_date) if d.due_date else "Não definido"
+            "vencimento": str(d.dueDate) if d.dueDate else "Não definido"
         })
     
     prompt = f"""

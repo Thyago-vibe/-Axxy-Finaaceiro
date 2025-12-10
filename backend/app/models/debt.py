@@ -11,3 +11,6 @@ class Debt(SQLModel, table=True):
     dueDate: str
     status: str
     isUrgent: bool = False
+    debtType: str = "parcelado"  # 'fixo' | 'parcelado'
+    totalInstallments: Optional[int] = None  # Total de parcelas (para parcelado)
+    currentInstallment: Optional[int] = None  # Parcela atual (para parcelado)

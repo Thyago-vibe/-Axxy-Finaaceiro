@@ -76,7 +76,10 @@ export interface Debt {
   monthly: number;
   dueDate: string;
   status: 'Em dia' | 'Pendente' | 'Atrasado';
-  isUrgent?: boolean; // Added for Summary view logic
+  isUrgent?: boolean;
+  debtType: 'fixo' | 'parcelado';
+  totalInstallments?: number;  // Total de parcelas (para parcelado)
+  currentInstallment?: number; // Parcela atual (para parcelado)
 }
 
 export interface Alert {

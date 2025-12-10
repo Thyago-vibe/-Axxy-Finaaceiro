@@ -49,7 +49,10 @@ export const FinancialHealth: React.FC = () => {
     monthly: '',
     dueDate: '',
     status: 'Em dia' as DebtStatus,
-    isUrgent: false
+    isUrgent: false,
+    debtType: 'parcelado' as 'fixo' | 'parcelado',
+    totalInstallments: '',
+    currentInstallment: ''
   });
 
   useEffect(() => {
@@ -106,26 +109,49 @@ export const FinancialHealth: React.FC = () => {
     e.preventDefault();
     try {
       // Validar inputs
-      const remainingVal = parseCurrencyInput(formData.remaining);
       const monthlyVal = parseCurrencyInput(formData.monthly);
+      let remainingVal = 0;
 
-      if (isNaN(remainingVal) || isNaN(monthlyVal)) {
-        alert('Por favor, insira valores válidos.');
+      if (formData.debtType === 'parcelado') {
+        remainingVal = parseCurrencyInput(formData.remaining);
+        if (isNaN(remainingVal)) {
+          alert('Por favor, insira um valor restante válido.');
+          return;
+        }
+      }
+
+      if (isNaN(monthlyVal)) {
+        alert('Por favor, insira um valor mensal válido.');
         return;
       }
 
-      const debtData: Debt = {
-        id: editingDebt?.id || '',
-        name: formData.name,
-        remaining: remainingVal,
-        monthly: monthlyVal,
-        dueDate: formData.dueDate,
-        status: formData.status,
-        isUrgent: formData.isUrgent
-      };
+      const debtData = editingDebt
+        ? {
+          id: editingDebt.id,
+          name: formData.name,
+          remaining: remainingVal,
+          monthly: monthlyVal,
+          dueDate: formData.dueDate,
+          status: formData.status,
+          isUrgent: formData.isUrgent,
+          debtType: formData.debtType,
+          totalInstallments: formData.totalInstallments ? parseInt(formData.totalInstallments) : null,
+          currentInstallment: formData.currentInstallment ? parseInt(formData.currentInstallment) : null
+        }
+        : {
+          name: formData.name,
+          remaining: remainingVal,
+          monthly: monthlyVal,
+          dueDate: formData.dueDate,
+          status: formData.status,
+          isUrgent: formData.isUrgent,
+          debtType: formData.debtType,
+          totalInstallments: formData.totalInstallments ? parseInt(formData.totalInstallments) : null,
+          currentInstallment: formData.currentInstallment ? parseInt(formData.currentInstallment) : null
+        };
 
       if (editingDebt) {
-        await apiService.updateDebt(editingDebt.id, debtData);
+        await apiService.updateDebt(editingDebt.id, debtData as Debt);
       } else {
         await apiService.createDebt(debtData);
       }
@@ -145,19 +171,24 @@ export const FinancialHealth: React.FC = () => {
         name: debt.name,
         remaining: formatCurrencyInput(debt.remaining.toFixed(2)),
         monthly: formatCurrencyInput(debt.monthly.toFixed(2)),
-        dueDate: debt.dueDate.split('T')[0], // Garantir formato YYYY-MM-DD
+        dueDate: debt.dueDate.split('T')[0],
         status: debt.status as DebtStatus,
-        isUrgent: debt.isUrgent || false
+        isUrgent: debt.isUrgent || false,
+        debtType: debt.debtType || 'parcelado',
+        totalInstallments: debt.totalInstallments?.toString() || '',
+        currentInstallment: debt.currentInstallment?.toString() || ''
       });
     } else {
-      // Reset form for clean open
       setFormData({
         name: '',
         remaining: '',
         monthly: '',
         dueDate: '',
         status: 'Em dia',
-        isUrgent: false
+        isUrgent: false,
+        debtType: 'parcelado',
+        totalInstallments: '',
+        currentInstallment: ''
       });
     }
     setIsModalOpen(true);
@@ -382,15 +413,15 @@ export const FinancialHealth: React.FC = () => {
             <div className="bg-[#0f1a16] rounded-2xl p-5">
               <div className="flex items-center gap-4 mb-4">
                 <div className={`text-5xl font-black ${(aiAnalysis.score || 0) >= 70 ? 'text-green-400' :
-                    (aiAnalysis.score || 0) >= 40 ? 'text-yellow-400' : 'text-red-400'
+                  (aiAnalysis.score || 0) >= 40 ? 'text-yellow-400' : 'text-red-400'
                   }`}>
                   {aiAnalysis.score || 50}
                 </div>
                 <div>
                   <p className="text-gray-400 text-sm">Score de Saúde</p>
                   <p className={`font-bold ${aiAnalysis.status === 'excellent' ? 'text-green-400' :
-                      aiAnalysis.status === 'good' ? 'text-green-300' :
-                        aiAnalysis.status === 'warning' ? 'text-yellow-400' : 'text-red-400'
+                    aiAnalysis.status === 'good' ? 'text-green-300' :
+                      aiAnalysis.status === 'warning' ? 'text-yellow-400' : 'text-red-400'
                     }`}>
                     {aiAnalysis.status === 'excellent' ? '🌟 Excelente' :
                       aiAnalysis.status === 'good' ? '✅ Bom' :
@@ -445,12 +476,12 @@ export const FinancialHealth: React.FC = () => {
             <div className="grid gap-3">
               {aiPriorities.slice(0, 5).map((p, i) => (
                 <div key={p.id} className={`flex items-center gap-4 p-4 rounded-xl ${p.urgencia === 'alta' ? 'bg-red-500/10 border border-red-500/20' :
-                    p.urgencia === 'media' ? 'bg-yellow-500/10 border border-yellow-500/20' :
-                      'bg-green-500/10 border border-green-500/20'
+                  p.urgencia === 'media' ? 'bg-yellow-500/10 border border-yellow-500/20' :
+                    'bg-green-500/10 border border-green-500/20'
                   }`}>
                   <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg ${p.urgencia === 'alta' ? 'bg-red-500/30 text-red-400' :
-                      p.urgencia === 'media' ? 'bg-yellow-500/30 text-yellow-400' :
-                        'bg-green-500/30 text-green-400'
+                    p.urgencia === 'media' ? 'bg-yellow-500/30 text-yellow-400' :
+                      'bg-green-500/30 text-green-400'
                     }`}>
                     {i + 1}
                   </div>
@@ -461,7 +492,7 @@ export const FinancialHealth: React.FC = () => {
                   <div className="text-right">
                     <p className="text-white font-bold">{formatCurrency(p.valor_restante || 0)}</p>
                     <p className={`text-xs ${p.urgencia === 'alta' ? 'text-red-400' :
-                        p.urgencia === 'media' ? 'text-yellow-400' : 'text-green-400'
+                      p.urgencia === 'media' ? 'text-yellow-400' : 'text-green-400'
                       }`}>
                       {p.acao_recomendada}
                     </p>
@@ -483,6 +514,7 @@ export const FinancialHealth: React.FC = () => {
             <thead className="bg-[#0f1a16]">
               <tr className="text-xs text-gray-500 uppercase">
                 <th className="py-4 pl-6 font-medium text-gray-400">Nome da Dívida</th>
+                <th className="py-4 font-medium text-gray-400">Tipo</th>
                 <th className="py-4 font-medium text-gray-400">Valor Restante</th>
                 <th className="py-4 font-medium text-gray-400">Parcela Mensal</th>
                 <th className="py-4 font-medium text-gray-400">Vencimento</th>
@@ -493,7 +525,24 @@ export const FinancialHealth: React.FC = () => {
             <tbody className="text-sm">
               {safeDebts.map((debt) => (
                 <tr key={debt.id} className="border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors">
-                  <td className="py-4 pl-6 font-medium text-white">{debt.name}</td>
+                  <td className="py-4 pl-6 font-medium text-white">
+                    <div className="flex flex-col">
+                      <span>{debt.name}</span>
+                      {debt.debtType === 'parcelado' && debt.currentInstallment && debt.totalInstallments && (
+                        <span className="text-xs text-gray-500">
+                          Parcela {debt.currentInstallment}/{debt.totalInstallments}
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="py-4">
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${debt.debtType === 'fixo'
+                      ? 'bg-blue-500/20 text-blue-400'
+                      : 'bg-purple-500/20 text-purple-400'
+                      }`}>
+                      {debt.debtType === 'fixo' ? '🔄 Fixo' : '📊 Parcelado'}
+                    </span>
+                  </td>
                   <td className="py-4 text-white">{formatCurrency(debt.remaining)}</td>
                   <td className="py-4 text-white">{formatCurrency(debt.monthly)}</td>
                   <td className="py-4 text-gray-300">
@@ -522,7 +571,7 @@ export const FinancialHealth: React.FC = () => {
               ))}
               {safeDebts.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-gray-500">
+                  <td colSpan={7} className="py-12 text-center text-gray-500">
                     <div className="flex flex-col items-center gap-2">
                       <AlertCircle size={32} className="opacity-50" />
                       <p>Nenhuma dívida cadastrada.</p>
@@ -572,23 +621,27 @@ export const FinancialHealth: React.FC = () => {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Valor Restante</label>
-                    <div className="relative">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">R$</span>
-                      <input
-                        type="text"
-                        value={formData.remaining}
-                        onChange={(e) => setFormData({ ...formData, remaining: formatCurrencyInput(e.target.value) })}
-                        placeholder="0,00"
-                        className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 pl-10 pr-4 focus:ring-1 focus:ring-axxy-primary outline-none transition-colors"
-                        required
-                      />
+                <div className={`grid ${formData.debtType === 'fixo' ? 'grid-cols-1' : 'grid-cols-2'} gap-4`}>
+                  {formData.debtType === 'parcelado' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">Valor Restante</label>
+                      <div className="relative">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">R$</span>
+                        <input
+                          type="text"
+                          value={formData.remaining}
+                          onChange={(e) => setFormData({ ...formData, remaining: formatCurrencyInput(e.target.value) })}
+                          placeholder="0,00"
+                          className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 pl-10 pr-4 focus:ring-1 focus:ring-axxy-primary outline-none transition-colors"
+                          required={formData.debtType === 'parcelado'}
+                        />
+                      </div>
                     </div>
-                  </div>
+                  )}
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Parcela Mensal</label>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      {formData.debtType === 'fixo' ? 'Valor Mensal' : 'Parcela Mensal'}
+                    </label>
                     <div className="relative">
                       <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">R$</span>
                       <input
@@ -613,6 +666,66 @@ export const FinancialHealth: React.FC = () => {
                     required
                   />
                 </div>
+
+                {/* Tipo de Dívida */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Tipo de Dívida</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, debtType: 'fixo', totalInstallments: '', currentInstallment: '' })}
+                      className={`py-3 px-4 rounded-xl font-medium transition-all flex items-center justify-center gap-2 ${formData.debtType === 'fixo'
+                        ? 'bg-axxy-primary text-axxy-bg'
+                        : 'bg-[#0b120f] border border-gray-700 text-gray-400 hover:border-axxy-primary hover:text-white'
+                        }`}
+                    >
+                      🔄 Fixo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, debtType: 'parcelado' })}
+                      className={`py-3 px-4 rounded-xl font-medium transition-all flex items-center justify-center gap-2 ${formData.debtType === 'parcelado'
+                        ? 'bg-axxy-primary text-axxy-bg'
+                        : 'bg-[#0b120f] border border-gray-700 text-gray-400 hover:border-axxy-primary hover:text-white'
+                        }`}
+                    >
+                      📊 Parcelado
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">
+                    {formData.debtType === 'fixo'
+                      ? 'Gastos recorrentes como aluguel, internet, streaming...'
+                      : 'Dívidas com prazo definido como financiamentos, cartão...'}
+                  </p>
+                </div>
+
+                {/* Campos de Parcelas - Só aparecem se for parcelado */}
+                {formData.debtType === 'parcelado' && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">Parcela Atual</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={formData.currentInstallment}
+                        onChange={(e) => setFormData({ ...formData, currentInstallment: e.target.value })}
+                        placeholder="Ex: 3"
+                        className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 px-4 focus:ring-1 focus:ring-axxy-primary outline-none transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">Total de Parcelas</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={formData.totalInstallments}
+                        onChange={(e) => setFormData({ ...formData, totalInstallments: e.target.value })}
+                        placeholder="Ex: 12"
+                        className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 px-4 focus:ring-1 focus:ring-axxy-primary outline-none transition-colors"
+                      />
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">Status</label>
