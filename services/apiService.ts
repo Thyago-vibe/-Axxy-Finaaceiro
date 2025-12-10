@@ -211,6 +211,14 @@ export const apiService = {
     const res = await fetch(`${API_URL}/debts/${id}/`, { method: 'DELETE' });
     return res.ok;
   },
+  payDebt: async (debtId: number, amount: number, accountId: number, date: string): Promise<any> => {
+    const res = await fetch(`${API_URL}/debts/${debtId}/pay/`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ amount, accountId, date })
+    });
+    return handleApiResponse(res);
+  },
 
   // --- Alerts ---
   getAlerts: async (): Promise<Alert[]> => {

@@ -70,7 +70,7 @@ export interface BudgetItem {
 
 
 export interface Debt {
-  id: string;
+  id: number;
   name: string;
   remaining: number;
   monthly: number;

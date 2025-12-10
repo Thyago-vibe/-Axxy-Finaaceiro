@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, X, AlertCircle, Sparkles, TrendingUp, Target, Zap } from 'lucide-react';
+import { Plus, Edit2, Trash2, X, AlertCircle, Sparkles, TrendingUp, Target, Zap, DollarSign } from 'lucide-react';
 import { formatCurrency, formatCurrencyInput, parseCurrencyInput } from '../utils/formatters';
-import { Debt } from '../types';
+import { Debt, Account } from '../types';
 import { apiService } from '../services/apiService';
 
 // Removendo createPortal temporariamente para simplicidade e compatibilidade
@@ -43,6 +43,16 @@ export const FinancialHealth: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDebt, setEditingDebt] = useState<Debt | null>(null);
 
+  // Payment Modal State
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [paymentData, setPaymentData] = useState({
+    debtId: null as number | null,
+    amount: '',
+    accountId: '',
+    date: new Date().toISOString().split('T')[0]
+  });
+  const [accounts, setAccounts] = useState<Account[]>([]);
+
   const [formData, setFormData] = useState({
     name: '',
     remaining: '',
@@ -57,7 +67,17 @@ export const FinancialHealth: React.FC = () => {
 
   useEffect(() => {
     loadDebts();
+    loadAccounts();
   }, []);
+
+  const loadAccounts = async () => {
+    try {
+      const data = await apiService.getAccounts();
+      setAccounts(data);
+    } catch (error) {
+      console.error('Erro ao carregar contas:', error);
+    }
+  };
 
   const loadDebts = async () => {
     try {
@@ -208,6 +228,59 @@ export const FinancialHealth: React.FC = () => {
         console.error('Erro ao excluir dívida:', error);
         alert('Erro ao excluir. Verifique o console.');
       }
+    }
+  };
+
+  const openPaymentModal = (debt: Debt) => {
+    // Default payment amount: monthly installment OR remaining amount (if smaller or fixed)
+    let defaultAmount = '';
+    if (debt.debtType === 'fixo') {
+      defaultAmount = formatCurrencyInput(debt.monthly.toFixed(2));
+    } else {
+      // If remaining is less than monthly, suggest remaining. Otherwise monthly.
+      // Or just default to monthly.
+      // Let's suggest monthly if it exists, otherwise remaining.
+      const val = (debt.monthly > 0 && debt.monthly < debt.remaining) ? debt.monthly : debt.remaining;
+      defaultAmount = formatCurrencyInput(val.toFixed(2));
+    }
+
+    setPaymentData({
+      debtId: debt.id,
+      amount: defaultAmount,
+      accountId: accounts.length > 0 ? accounts[0].id?.toString() || '' : '',
+      date: new Date().toISOString().split('T')[0]
+    });
+    setIsPaymentModalOpen(true);
+  };
+
+  const handlePaymentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!paymentData.debtId || !paymentData.accountId || !paymentData.amount) {
+      alert('Preencha todos os campos obrigatórios.');
+      return;
+    }
+
+    try {
+      const amount = parseCurrencyInput(paymentData.amount);
+      if (isNaN(amount) || amount <= 0) {
+        alert('Valor inválido.');
+        return;
+      }
+
+      await apiService.payDebt(
+        paymentData.debtId,
+        amount,
+        parseInt(paymentData.accountId),
+        paymentData.date
+      );
+
+      setIsPaymentModalOpen(false);
+      await loadDebts();
+      await loadAccounts(); // Refresh accounts to show new balance if we were showing it
+      alert('Pagamento registrado com sucesso!');
+    } catch (error) {
+      console.error('Erro ao registrar pagamento:', error);
+      alert('Erro ao registrar pagamento.');
     }
   };
 
@@ -556,7 +629,15 @@ export const FinancialHealth: React.FC = () => {
                   </td>
                   <td className="py-4">{getStatusBadge(debt.status)}</td>
                   <td className="py-4 pr-6">
+
                     <div className="flex items-center justify-center gap-2">
+                      <button
+                        onClick={() => openPaymentModal(debt)}
+                        className="text-gray-400 hover:text-green-400 transition-colors p-2 hover:bg-green-400/10 rounded-lg"
+                        title="Pagar"
+                      >
+                        <DollarSign size={18} />
+                      </button>
                       <button
                         onClick={() => openModal(debt)}
                         className="text-gray-400 hover:text-axxy-primary transition-colors p-2 hover:bg-axxy-primary/10 rounded-lg"
@@ -589,183 +670,269 @@ export const FinancialHealth: React.FC = () => {
             </tbody>
           </table>
         </div>
-      </div>
+      </div >
 
       {/* Modal - Renderizado diretamente com Fixed Position (Sem Portal) para teste */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
-          {/* Backdrop */}
-          <div
-            className="absolute inset-0 bg-black/90 backdrop-blur-sm"
-            onClick={closeModal}
-          ></div>
+      {/* Payment Modal */}
+      {
+        isPaymentModalOpen && (
+          <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/90 backdrop-blur-sm"
+              onClick={() => setIsPaymentModalOpen(false)}
+            ></div>
 
-          {/* Modal Content */}
-          <div className="relative bg-gradient-to-b from-[#1c2e26] to-[#15221c] border border-white/10 rounded-3xl w-full max-w-lg shadow-2xl animate-fade-in z-10 overflow-hidden">
-            <button
-              onClick={closeModal}
-              className="absolute top-4 right-4 text-gray-500 hover:text-white transition-colors"
-            >
-              <X size={24} />
-            </button>
+            <div className="relative bg-gradient-to-b from-[#1c2e26] to-[#15221c] border border-white/10 rounded-3xl w-full max-w-md shadow-2xl animate-fade-in z-10 overflow-hidden">
+              <button
+                onClick={() => setIsPaymentModalOpen(false)}
+                className="absolute top-4 right-4 text-gray-500 hover:text-white transition-colors"
+              >
+                <X size={24} />
+              </button>
 
-            <div className="p-8">
-              <h3 className="text-2xl font-bold text-white mb-6">
-                {editingDebt ? 'Editar Dívida' : 'Nova Dívida'}
-              </h3>
+              <div className="p-8">
+                <h3 className="text-2xl font-bold text-white mb-6">Registrar Pagamento</h3>
 
-              <form onSubmit={handleSubmit} className="space-y-5">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Nome da Dívida</label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="Ex: Financiamento Veículo"
-                    className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 px-4 focus:ring-1 focus:ring-axxy-primary outline-none transition-colors"
-                    required
-                  />
-                </div>
-
-                <div className={`grid ${formData.debtType === 'fixo' ? 'grid-cols-1' : 'grid-cols-2'} gap-4`}>
-                  {formData.debtType === 'parcelado' && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">Valor Restante</label>
-                      <div className="relative">
-                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">R$</span>
-                        <input
-                          type="text"
-                          value={formData.remaining}
-                          onChange={(e) => setFormData({ ...formData, remaining: formatCurrencyInput(e.target.value) })}
-                          placeholder="0,00"
-                          className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 pl-10 pr-4 focus:ring-1 focus:ring-axxy-primary outline-none transition-colors"
-                          required={formData.debtType === 'parcelado'}
-                        />
-                      </div>
-                    </div>
-                  )}
+                <form onSubmit={handlePaymentSubmit} className="space-y-5">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      {formData.debtType === 'fixo' ? 'Valor Mensal' : 'Parcela Mensal'}
-                    </label>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Valor do Pagamento</label>
                     <div className="relative">
                       <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">R$</span>
                       <input
                         type="text"
-                        value={formData.monthly}
-                        onChange={(e) => setFormData({ ...formData, monthly: formatCurrencyInput(e.target.value) })}
-                        placeholder="0,00"
+                        value={paymentData.amount}
+                        onChange={(e) => setPaymentData({ ...paymentData, amount: formatCurrencyInput(e.target.value) })}
                         className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 pl-10 pr-4 focus:ring-1 focus:ring-axxy-primary outline-none transition-colors"
                         required
                       />
                     </div>
                   </div>
-                </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Data de Vencimento</label>
-                  <input
-                    type="date"
-                    value={formData.dueDate}
-                    onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
-                    className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 px-4 focus:ring-1 focus:ring-axxy-primary outline-none [color-scheme:dark] transition-colors"
-                    required
-                  />
-                </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Conta de Origem</label>
+                    <select
+                      value={paymentData.accountId}
+                      onChange={(e) => setPaymentData({ ...paymentData, accountId: e.target.value })}
+                      className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 px-4 focus:ring-1 focus:ring-axxy-primary outline-none transition-colors"
+                      required
+                    >
+                      <option value="">Selecione uma conta...</option>
+                      {accounts.map(acc => (
+                        <option key={acc.id} value={acc.id}>
+                          {acc.name} (Saldo: {formatCurrency(acc.balance)})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                {/* Tipo de Dívida */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Tipo de Dívida</label>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Data do Pagamento</label>
+                    <input
+                      type="date"
+                      value={paymentData.date}
+                      onChange={(e) => setPaymentData({ ...paymentData, date: e.target.value })}
+                      className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 px-4 focus:ring-1 focus:ring-axxy-primary outline-none [color-scheme:dark] transition-colors"
+                      required
+                    />
+                  </div>
+
+                  <div className="pt-4 flex gap-4">
                     <button
                       type="button"
-                      onClick={() => setFormData({ ...formData, debtType: 'fixo', totalInstallments: '', currentInstallment: '' })}
-                      className={`py-3 px-4 rounded-xl font-medium transition-all flex items-center justify-center gap-2 ${formData.debtType === 'fixo'
-                        ? 'bg-axxy-primary text-axxy-bg'
-                        : 'bg-[#0b120f] border border-gray-700 text-gray-400 hover:border-axxy-primary hover:text-white'
-                        }`}
+                      onClick={() => setIsPaymentModalOpen(false)}
+                      className="flex-1 py-3 text-gray-400 font-medium hover:text-white transition-colors"
                     >
-                      🔄 Fixo
+                      Cancelar
                     </button>
                     <button
-                      type="button"
-                      onClick={() => setFormData({ ...formData, debtType: 'parcelado' })}
-                      className={`py-3 px-4 rounded-xl font-medium transition-all flex items-center justify-center gap-2 ${formData.debtType === 'parcelado'
-                        ? 'bg-axxy-primary text-axxy-bg'
-                        : 'bg-[#0b120f] border border-gray-700 text-gray-400 hover:border-axxy-primary hover:text-white'
-                        }`}
+                      type="submit"
+                      className="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-xl transition-colors shadow-lg"
                     >
-                      📊 Parcelado
+                      Confirmar Pagamento
                     </button>
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">
-                    {formData.debtType === 'fixo'
-                      ? 'Gastos recorrentes como aluguel, internet, streaming...'
-                      : 'Dívidas com prazo definido como financiamentos, cartão...'}
-                  </p>
-                </div>
-
-                {/* Campos de Parcelas - Só aparecem se for parcelado */}
-                {formData.debtType === 'parcelado' && (
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">Parcela Atual</label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={formData.currentInstallment}
-                        onChange={(e) => setFormData({ ...formData, currentInstallment: e.target.value })}
-                        placeholder="Ex: 3"
-                        className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 px-4 focus:ring-1 focus:ring-axxy-primary outline-none transition-colors"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">Total de Parcelas</label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={formData.totalInstallments}
-                        onChange={(e) => setFormData({ ...formData, totalInstallments: e.target.value })}
-                        placeholder="Ex: 12"
-                        className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 px-4 focus:ring-1 focus:ring-axxy-primary outline-none transition-colors"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Status</label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value as DebtStatus })}
-                    className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 px-4 focus:ring-1 focus:ring-axxy-primary outline-none transition-colors"
-                  >
-                    <option value="Em dia">Em dia</option>
-                    <option value="Pendente">Pendente</option>
-                    <option value="Atrasado">Atrasado</option>
-                  </select>
-                </div>
-
-                <div className="pt-4 flex gap-4">
-                  <button
-                    type="button"
-                    onClick={closeModal}
-                    className="flex-1 py-3 text-gray-400 font-medium hover:text-white transition-colors"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 bg-axxy-primary hover:bg-axxy-primaryHover text-axxy-bg font-bold py-3 rounded-xl transition-colors shadow-lg"
-                  >
-                    {editingDebt ? 'Salvar Alterações' : 'Criar Dívida'}
-                  </button>
-                </div>
-              </form>
+                </form>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+      {
+        isModalOpen && (
+          <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <div
+              className="absolute inset-0 bg-black/90 backdrop-blur-sm"
+              onClick={closeModal}
+            ></div>
+
+            {/* Modal Content */}
+            <div className="relative bg-gradient-to-b from-[#1c2e26] to-[#15221c] border border-white/10 rounded-3xl w-full max-w-lg shadow-2xl animate-fade-in z-10 overflow-hidden">
+              <button
+                onClick={closeModal}
+                className="absolute top-4 right-4 text-gray-500 hover:text-white transition-colors"
+              >
+                <X size={24} />
+              </button>
+
+              <div className="p-8">
+                <h3 className="text-2xl font-bold text-white mb-6">
+                  {editingDebt ? 'Editar Dívida' : 'Nova Dívida'}
+                </h3>
+
+                <form onSubmit={handleSubmit} className="space-y-5">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Nome da Dívida</label>
+                    <input
+                      type="text"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      placeholder="Ex: Financiamento Veículo"
+                      className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 px-4 focus:ring-1 focus:ring-axxy-primary outline-none transition-colors"
+                      required
+                    />
+                  </div>
+
+                  <div className={`grid ${formData.debtType === 'fixo' ? 'grid-cols-1' : 'grid-cols-2'} gap-4`}>
+                    {formData.debtType === 'parcelado' && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Valor Restante</label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">R$</span>
+                          <input
+                            type="text"
+                            value={formData.remaining}
+                            onChange={(e) => setFormData({ ...formData, remaining: formatCurrencyInput(e.target.value) })}
+                            placeholder="0,00"
+                            className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 pl-10 pr-4 focus:ring-1 focus:ring-axxy-primary outline-none transition-colors"
+                            required={formData.debtType === 'parcelado'}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        {formData.debtType === 'fixo' ? 'Valor Mensal' : 'Parcela Mensal'}
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">R$</span>
+                        <input
+                          type="text"
+                          value={formData.monthly}
+                          onChange={(e) => setFormData({ ...formData, monthly: formatCurrencyInput(e.target.value) })}
+                          placeholder="0,00"
+                          className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 pl-10 pr-4 focus:ring-1 focus:ring-axxy-primary outline-none transition-colors"
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Data de Vencimento</label>
+                    <input
+                      type="date"
+                      value={formData.dueDate}
+                      onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
+                      className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 px-4 focus:ring-1 focus:ring-axxy-primary outline-none [color-scheme:dark] transition-colors"
+                      required
+                    />
+                  </div>
+
+                  {/* Tipo de Dívida */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Tipo de Dívida</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, debtType: 'fixo', totalInstallments: '', currentInstallment: '' })}
+                        className={`py-3 px-4 rounded-xl font-medium transition-all flex items-center justify-center gap-2 ${formData.debtType === 'fixo'
+                          ? 'bg-axxy-primary text-axxy-bg'
+                          : 'bg-[#0b120f] border border-gray-700 text-gray-400 hover:border-axxy-primary hover:text-white'
+                          }`}
+                      >
+                        🔄 Fixo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, debtType: 'parcelado' })}
+                        className={`py-3 px-4 rounded-xl font-medium transition-all flex items-center justify-center gap-2 ${formData.debtType === 'parcelado'
+                          ? 'bg-axxy-primary text-axxy-bg'
+                          : 'bg-[#0b120f] border border-gray-700 text-gray-400 hover:border-axxy-primary hover:text-white'
+                          }`}
+                      >
+                        📊 Parcelado
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">
+                      {formData.debtType === 'fixo'
+                        ? 'Gastos recorrentes como aluguel, internet, streaming...'
+                        : 'Dívidas com prazo definido como financiamentos, cartão...'}
+                    </p>
+                  </div>
+
+                  {/* Campos de Parcelas - Só aparecem se for parcelado */}
+                  {formData.debtType === 'parcelado' && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Parcela Atual</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={formData.currentInstallment}
+                          onChange={(e) => setFormData({ ...formData, currentInstallment: e.target.value })}
+                          placeholder="Ex: 3"
+                          className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 px-4 focus:ring-1 focus:ring-axxy-primary outline-none transition-colors"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Total de Parcelas</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={formData.totalInstallments}
+                          onChange={(e) => setFormData({ ...formData, totalInstallments: e.target.value })}
+                          placeholder="Ex: 12"
+                          className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 px-4 focus:ring-1 focus:ring-axxy-primary outline-none transition-colors"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Status</label>
+                    <select
+                      value={formData.status}
+                      onChange={(e) => setFormData({ ...formData, status: e.target.value as DebtStatus })}
+                      className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 px-4 focus:ring-1 focus:ring-axxy-primary outline-none transition-colors"
+                    >
+                      <option value="Em dia">Em dia</option>
+                      <option value="Pendente">Pendente</option>
+                      <option value="Atrasado">Atrasado</option>
+                    </select>
+                  </div>
+
+                  <div className="pt-4 flex gap-4">
+                    <button
+                      type="button"
+                      onClick={closeModal}
+                      className="flex-1 py-3 text-gray-400 font-medium hover:text-white transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      className="flex-1 bg-axxy-primary hover:bg-axxy-primaryHover text-axxy-bg font-bold py-3 rounded-xl transition-colors shadow-lg"
+                    >
+                      {editingDebt ? 'Salvar Alterações' : 'Criar Dívida'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        )
+      }
+    </div >
   );
 };
