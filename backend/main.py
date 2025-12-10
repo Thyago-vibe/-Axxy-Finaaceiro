@@ -9,8 +9,13 @@ import os
 # ==========================================
 # 1. CONFIGURAÇÃO DO BANCO DE DADOS (SQLite)
 # ==========================================
-sqlite_file_name = os.getenv("DATABASE_FILE", "database.db")
+sqlite_file_name = os.getenv("DATABASE_FILE", "database/database.db")
 sqlite_url = f"sqlite:///{sqlite_file_name}"
+
+# Garante que o diretório do banco exista
+db_dir = os.path.dirname(sqlite_file_name)
+if db_dir and not os.path.exists(db_dir):
+    os.makedirs(db_dir, exist_ok=True)
 
 # Cria a conexão com o banco
 engine = create_engine(sqlite_url, connect_args={"check_same_thread": False})
@@ -43,7 +48,7 @@ class Transaction(SQLModel, table=True):
     type: str  # 'income' | 'expense'
     date: str
     category: str
-    status: str # 'completed' | 'pending'
+    status: str = "completed" # 'completed' | 'pending'
 
 class Goal(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -134,6 +139,16 @@ class AISettings(SQLModel, table=True):
     instructions: str
     last_tested: Optional[str] = None
     is_active: bool = True
+
+class NetWorthGoal(SQLModel, table=True):
+    """Meta de Patrimônio - permite ao usuário definir metas de acumulação de ativos"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str  # Ex: "Primeiro Milhão", "Aposentadoria"
+    target_amount: float  # Valor alvo em R$
+    current_amount: float = 0  # Será calculado automaticamente
+    deadline: Optional[str] = None  # Data limite (YYYY-MM-DD)
+    created_at: str = ""  # Data de criação
+    is_active: bool = True  # Se é a meta ativa
 
 
 # ==========================================
@@ -1818,6 +1833,197 @@ def update_liability(liability_id: int, liability_data: Liability, session: Sess
     session.commit()
     session.refresh(liability)
     return liability
+
+
+# --- METAS DE PATRIMÔNIO ---
+
+@app.get("/api/net-worth/goals/")
+def get_net_worth_goals(session: Session = Depends(get_session)):
+    """Retorna todas as metas de patrimônio."""
+    goals = session.exec(select(NetWorthGoal)).all()
+    
+    # Calcular o patrimônio atual para cada meta
+    assets = session.exec(select(Asset)).all()
+    liabilities = session.exec(select(Liability)).all()
+    current_net_worth = sum(a.value for a in assets) - sum(l.value for l in liabilities)
+    
+    # Atualizar current_amount de todas as metas
+    for goal in goals:
+        goal.current_amount = current_net_worth
+    
+    return goals
+
+@app.get("/api/net-worth/goals/active")
+def get_active_net_worth_goal(session: Session = Depends(get_session)):
+    """Retorna a meta de patrimônio ativa."""
+    goal = session.exec(select(NetWorthGoal).where(NetWorthGoal.is_active == True)).first()
+    
+    if not goal:
+        return None
+    
+    # Calcular patrimônio atual
+    assets = session.exec(select(Asset)).all()
+    liabilities = session.exec(select(Liability)).all()
+    current_net_worth = sum(a.value for a in assets) - sum(l.value for l in liabilities)
+    goal.current_amount = current_net_worth
+    
+    # Calcular progresso
+    progress = (current_net_worth / goal.target_amount * 100) if goal.target_amount > 0 else 0
+    
+    return {
+        "goal": goal,
+        "progress": min(100, progress),
+        "remaining": max(0, goal.target_amount - current_net_worth)
+    }
+
+@app.post("/api/net-worth/goals/")
+def create_net_worth_goal(goal: NetWorthGoal, session: Session = Depends(get_session)):
+    """Cria uma nova meta de patrimônio."""
+    from datetime import datetime
+    
+    # Se for a primeira meta ou marcada como ativa, desativa as outras
+    if goal.is_active:
+        existing_goals = session.exec(select(NetWorthGoal).where(NetWorthGoal.is_active == True)).all()
+        for g in existing_goals:
+            g.is_active = False
+            session.add(g)
+    
+    goal.created_at = datetime.now().strftime("%Y-%m-%d")
+    session.add(goal)
+    session.commit()
+    session.refresh(goal)
+    return goal
+
+@app.put("/api/net-worth/goals/{goal_id}/")
+def update_net_worth_goal(goal_id: int, goal_data: NetWorthGoal, session: Session = Depends(get_session)):
+    """Atualiza uma meta de patrimônio."""
+    goal = session.get(NetWorthGoal, goal_id)
+    if not goal:
+        raise HTTPException(status_code=404, detail="Meta não encontrada")
+    
+    goal.name = goal_data.name
+    goal.target_amount = goal_data.target_amount
+    goal.deadline = goal_data.deadline
+    goal.is_active = goal_data.is_active
+    
+    # Se marcada como ativa, desativa as outras
+    if goal.is_active:
+        other_goals = session.exec(select(NetWorthGoal).where(NetWorthGoal.id != goal_id, NetWorthGoal.is_active == True)).all()
+        for g in other_goals:
+            g.is_active = False
+            session.add(g)
+    
+    session.add(goal)
+    session.commit()
+    session.refresh(goal)
+    return goal
+
+@app.delete("/api/net-worth/goals/{goal_id}/")
+def delete_net_worth_goal(goal_id: int, session: Session = Depends(get_session)):
+    """Deleta uma meta de patrimônio."""
+    goal = session.get(NetWorthGoal, goal_id)
+    if not goal:
+        raise HTTPException(status_code=404, detail="Meta não encontrada")
+    session.delete(goal)
+    session.commit()
+    return {"ok": True}
+
+
+# --- INSIGHT DE IA PARA PATRIMÔNIO ---
+
+@app.get("/api/net-worth/ai-insight/")
+def get_net_worth_ai_insight(session: Session = Depends(get_session)):
+    """Gera insight de IA sobre o patrimônio do usuário."""
+    assets = session.exec(select(Asset)).all()
+    liabilities = session.exec(select(Liability)).all()
+    
+    total_assets = sum(a.value for a in assets)
+    total_liabilities = sum(l.value for l in liabilities)
+    net_worth = total_assets - total_liabilities
+    
+    # Composição por tipo
+    asset_composition = {}
+    for a in assets:
+        asset_composition[a.iconType] = asset_composition.get(a.iconType, 0) + a.value
+    
+    # Buscar meta ativa
+    active_goal = session.exec(select(NetWorthGoal).where(NetWorthGoal.is_active == True)).first()
+    
+    prompt = f"""
+    Analise o patrimônio do usuário e forneça um insight personalizado e acionável.
+    
+    DADOS DO PATRIMÔNIO:
+    - Total de Ativos: R$ {total_assets:,.2f}
+    - Total de Passivos: R$ {total_liabilities:,.2f}
+    - Patrimônio Líquido: R$ {net_worth:,.2f}
+    
+    COMPOSIÇÃO DOS ATIVOS:
+    {', '.join([f"{k}: R$ {v:,.2f}" for k, v in asset_composition.items()]) if asset_composition else "Nenhum ativo cadastrado"}
+    
+    ATIVOS DETALHADOS:
+    {', '.join([f"{a.name} ({a.type}): R$ {a.value:,.2f}" for a in assets]) if assets else "Nenhum"}
+    
+    PASSIVOS DETALHADOS:
+    {', '.join([f"{l.name} ({l.type}): R$ {l.value:,.2f}" for l in liabilities]) if liabilities else "Nenhum"}
+    
+    META ATIVA: {"R$ " + f"{active_goal.target_amount:,.2f}" if active_goal else "Nenhuma meta definida"}
+    
+    Retorne JSON com:
+    {{
+        "insight_title": "Título curto e chamativo (máx 5 palavras)",
+        "insight_message": "Conselho prático e personalizado (2-3 frases)",
+        "action_text": "Texto do botão de ação (ex: 'Explorar opções', 'Ver sugestões')",
+        "priority": "high" ou "medium" ou "low",
+        "category": "diversificacao" ou "reducao_passivos" ou "investimento" ou "meta" ou "geral"
+    }}
+    """
+    
+    ai_result = ask_ai_analysis(prompt, session)
+    
+    if ai_result:
+        return {
+            "success": True,
+            "insight": ai_result
+        }
+    
+    # Fallback sem IA - gerar insight baseado em regras
+    if total_assets == 0:
+        insight = {
+            "insight_title": "Comece Agora!",
+            "insight_message": "Você ainda não cadastrou nenhum ativo. Adicione seus bens para começar a acompanhar seu patrimônio.",
+            "action_text": "Adicionar ativo",
+            "priority": "high",
+            "category": "geral"
+        }
+    elif total_liabilities > total_assets * 0.5:
+        insight = {
+            "insight_title": "Atenção aos Passivos",
+            "insight_message": f"Seus passivos representam mais de 50% dos seus ativos. Considere criar um plano para reduzir dívidas.",
+            "action_text": "Ver estratégias",
+            "priority": "high",
+            "category": "reducao_passivos"
+        }
+    elif len(asset_composition) == 1:
+        insight = {
+            "insight_title": "Diversifique",
+            "insight_message": "Seu patrimônio está concentrado em um único tipo de ativo. Considere diversificar para reduzir riscos.",
+            "action_text": "Explorar opções",
+            "priority": "medium",
+            "category": "diversificacao"
+        }
+    else:
+        insight = {
+            "insight_title": "Continue Assim!",
+            "insight_message": f"Seu patrimônio de R$ {net_worth:,.2f} está bem estruturado. Continue poupando e investindo regularmente.",
+            "action_text": "Ver detalhes",
+            "priority": "low",
+            "category": "geral"
+        }
+    
+    return {
+        "success": True,
+        "insight": insight
+    }
 
 
 # ==========================================

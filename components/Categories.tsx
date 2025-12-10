@@ -147,8 +147,8 @@ export const Categories: React.FC = () => {
                 <div>
                   <h3 className="text-lg font-bold text-white">{cat.name}</h3>
                   <span className={`text-xs px-2 py-0.5 rounded-full ${cat.type === 'Receita'
-                      ? 'bg-green-500/20 text-green-400'
-                      : 'bg-red-500/20 text-red-400'
+                    ? 'bg-green-500/20 text-green-400'
+                    : 'bg-red-500/20 text-red-400'
                     }`}>
                     {cat.type}
                   </span>
@@ -184,8 +184,8 @@ export const Categories: React.FC = () => {
 
       {/* Modal */}
       {isModalOpen && createPortal(
-        <div className="fixed inset-0 bg-black/90 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-gradient-to-b from-[#1c2e26] to-[#15221c] border border-white/10 rounded-3xl w-full max-w-lg shadow-2xl animate-fade-in relative">
+        <div className="fixed inset-0 bg-black/90 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-gradient-to-b from-[#1c2e26] to-[#15221c] border border-white/10 rounded-3xl w-full max-w-lg shadow-2xl animate-fade-in relative my-auto max-h-[90vh] overflow-y-auto">
             <button
               onClick={closeModal}
               className="absolute top-4 right-4 text-gray-500 hover:text-white transition-colors"
@@ -218,8 +218,8 @@ export const Categories: React.FC = () => {
                       type="button"
                       onClick={() => setFormData({ ...formData, type: 'Receita' })}
                       className={`py-3 rounded-xl border transition-all ${formData.type === 'Receita'
-                          ? 'bg-green-500/10 border-green-500 text-green-400'
-                          : 'bg-transparent border-gray-700 text-gray-400 hover:border-gray-500'
+                        ? 'bg-green-500/10 border-green-500 text-green-400'
+                        : 'bg-transparent border-gray-700 text-gray-400 hover:border-gray-500'
                         }`}
                     >
                       Receita
@@ -228,8 +228,8 @@ export const Categories: React.FC = () => {
                       type="button"
                       onClick={() => setFormData({ ...formData, type: 'Despesa' })}
                       className={`py-3 rounded-xl border transition-all ${formData.type === 'Despesa'
-                          ? 'bg-red-500/10 border-red-500 text-red-400'
-                          : 'bg-transparent border-gray-700 text-gray-400 hover:border-gray-500'
+                        ? 'bg-red-500/10 border-red-500 text-red-400'
+                        : 'bg-transparent border-gray-700 text-gray-400 hover:border-gray-500'
                         }`}
                     >
                       Despesa
@@ -246,8 +246,8 @@ export const Categories: React.FC = () => {
                         type="button"
                         onClick={() => setFormData({ ...formData, color: preset.value })}
                         className={`h-12 rounded-xl transition-all ${formData.color === preset.value
-                            ? 'ring-2 ring-white ring-offset-2 ring-offset-[#15221c] scale-110'
-                            : 'hover:scale-105'
+                          ? 'ring-2 ring-white ring-offset-2 ring-offset-[#15221c] scale-110'
+                          : 'hover:scale-105'
                           }`}
                         style={{ backgroundColor: preset.value }}
                         title={preset.name}

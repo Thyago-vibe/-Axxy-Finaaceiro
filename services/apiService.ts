@@ -321,6 +321,34 @@ export const apiService = {
     return res.ok;
   },
 
+  // --- Net Worth Goals (Metas de Patrimônio) ---
+  getNetWorthGoals: async (): Promise<any[]> => {
+    const res = await fetch(`${API_URL}/net-worth/goals/`);
+    return handleApiResponse(res, []);
+  },
+  getActiveNetWorthGoal: async (): Promise<{ goal: any; progress: number; remaining: number } | null> => {
+    const res = await fetch(`${API_URL}/net-worth/goals/active`);
+    return handleApiResponse(res, null);
+  },
+  createNetWorthGoal: async (goal: { name: string; target_amount: number; deadline?: string; is_active?: boolean }): Promise<any> => {
+    const res = await fetch(`${API_URL}/net-worth/goals/`, { method: 'POST', headers, body: JSON.stringify(goal) });
+    return handleApiResponse(res);
+  },
+  updateNetWorthGoal: async (id: number, goal: { name: string; target_amount: number; deadline?: string; is_active?: boolean }): Promise<any> => {
+    const res = await fetch(`${API_URL}/net-worth/goals/${id}/`, { method: 'PUT', headers, body: JSON.stringify(goal) });
+    return handleApiResponse(res);
+  },
+  deleteNetWorthGoal: async (id: number): Promise<boolean> => {
+    const res = await fetch(`${API_URL}/net-worth/goals/${id}/`, { method: 'DELETE' });
+    return res.ok;
+  },
+
+  // --- Net Worth AI Insight ---
+  getNetWorthAIInsight: async (): Promise<{ success: boolean; insight: { insight_title: string; insight_message: string; action_text: string; priority: string; category: string } }> => {
+    const res = await fetch(`${API_URL}/net-worth/ai-insight/`);
+    return handleApiResponse(res);
+  },
+
   // --- AI Settings ---
   getAISettings: async (): Promise<{ api_key: string; instructions: string; is_connected: boolean; last_tested: string | null; model_name?: string; provider?: string }> => {
     const res = await fetch(`${API_URL}/config/ai`);

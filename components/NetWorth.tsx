@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Home, Car, TrendingUp, TrendingDown, DollarSign, PieChart as PieChartIcon, Wallet, Building, Landmark, CreditCard, MoreHorizontal, Lightbulb, Target } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Plus, Home, Car, TrendingUp, TrendingDown, DollarSign, PieChart as PieChartIcon, Wallet, Building, Landmark, CreditCard, MoreHorizontal, Lightbulb, Target, X, Loader2 } from 'lucide-react';
 import { formatCurrency } from '../utils/formatters';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { apiService } from '../services/apiService';
@@ -13,12 +14,25 @@ export const NetWorth: React.FC = () => {
     // Modal States
     const [isAssetModalOpen, setAssetModalOpen] = useState(false);
     const [isLiabilityModalOpen, setLiabilityModalOpen] = useState(false);
+    const [isGoalModalOpen, setGoalModalOpen] = useState(false);
 
     // Form States
     const [itemName, setItemName] = useState('');
     const [itemValue, setItemValue] = useState('');
     const [itemType, setItemType] = useState('');
     const [itemIcon, setItemIcon] = useState('other');
+
+    // Goal Form States
+    const [goalName, setGoalName] = useState('');
+    const [goalTarget, setGoalTarget] = useState('');
+    const [goalDeadline, setGoalDeadline] = useState('');
+
+    // AI Insight State
+    const [aiInsight, setAiInsight] = useState<{ insight_title: string; insight_message: string; action_text: string; priority: string; category: string } | null>(null);
+    const [loadingInsight, setLoadingInsight] = useState(false);
+
+    // Active Goal State
+    const [activeGoal, setActiveGoal] = useState<{ goal: any; progress: number; remaining: number } | null>(null);
 
     const fetchData = () => {
         setLoading(true);
@@ -28,8 +42,28 @@ export const NetWorth: React.FC = () => {
             .finally(() => setLoading(false));
     };
 
+    const fetchAIInsight = () => {
+        setLoadingInsight(true);
+        apiService.getNetWorthAIInsight()
+            .then(res => {
+                if (res.success) {
+                    setAiInsight(res.insight);
+                }
+            })
+            .catch(console.error)
+            .finally(() => setLoadingInsight(false));
+    };
+
+    const fetchActiveGoal = () => {
+        apiService.getActiveNetWorthGoal()
+            .then(setActiveGoal)
+            .catch(console.error);
+    };
+
     useEffect(() => {
         fetchData();
+        fetchAIInsight();
+        fetchActiveGoal();
     }, []);
 
     const handleAddAsset = async (e: React.FormEvent) => {
@@ -84,6 +118,27 @@ export const NetWorth: React.FC = () => {
         setItemType('');
         setItemIcon('other');
     }
+
+    const resetGoalForm = () => {
+        setGoalName('');
+        setGoalTarget('');
+        setGoalDeadline('');
+    }
+
+    const handleCreateGoal = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!goalName || !goalTarget) return;
+
+        await apiService.createNetWorthGoal({
+            name: goalName,
+            target_amount: parseFloat(goalTarget),
+            deadline: goalDeadline || undefined,
+            is_active: true
+        });
+        setGoalModalOpen(false);
+        resetGoalForm();
+        fetchActiveGoal();
+    };
 
     const getIcon = (type: string, isAsset: boolean) => {
         if (isAsset) {
@@ -256,35 +311,76 @@ export const NetWorth: React.FC = () => {
 
             {/* Bottom Insight Section */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-[#15221c] border border-[#1e332a] rounded-3xl p-6">
+                {/* Card 1: Insight da IA */}
+                <div className="bg-[#15221c] border border-[#1e332a] rounded-3xl p-6 hover:border-green-500/30 transition-colors cursor-pointer" onClick={fetchAIInsight}>
                     <div className="flex items-center gap-3 mb-4">
                         <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-[#0b120f]">
-                            <Lightbulb size={18} />
+                            {loadingInsight ? <Loader2 size={18} className="animate-spin" /> : <Lightbulb size={18} />}
                         </div>
-                        <h4 className="text-white font-bold">Insight da IA</h4>
+                        <h4 className="text-white font-bold">{aiInsight?.insight_title || 'Insight da IA'}</h4>
                     </div>
-                    <p className="text-gray-400 text-sm mb-4">Baseado na sua composição de ativos, considere diversificar seus investimentos em fundos de renda fixa.</p>
-                    <button className="text-green-500 text-sm font-bold hover:underline">Explorar opções</button>
+                    <p className="text-gray-400 text-sm mb-4">
+                        {loadingInsight
+                            ? 'Analisando seu patrimônio...'
+                            : aiInsight?.insight_message || 'Clique para gerar um insight personalizado sobre seu patrimônio.'}
+                    </p>
+                    <button
+                        onClick={(e) => { e.stopPropagation(); fetchAIInsight(); }}
+                        className="text-green-500 text-sm font-bold hover:underline"
+                        disabled={loadingInsight}
+                    >
+                        {loadingInsight ? 'Carregando...' : (aiInsight?.action_text || 'Gerar insight')}
+                    </button>
                 </div>
 
-                <div className="bg-[#15221c] border border-[#1e332a] rounded-3xl p-6">
+                {/* Card 2: Meta de Patrimônio */}
+                <div className="bg-[#15221c] border border-[#1e332a] rounded-3xl p-6 hover:border-green-500/30 transition-colors">
                     <div className="flex items-center gap-3 mb-4">
                         <div className="w-8 h-8 rounded-full bg-[#1e332a] text-green-500 flex items-center justify-center border border-green-500/30">
                             <Target size={18} />
                         </div>
-                        <h4 className="text-white font-bold">Meta de Patrimônio</h4>
+                        <h4 className="text-white font-bold">
+                            {activeGoal?.goal?.name || 'Meta de Patrimônio'}
+                        </h4>
                     </div>
-                    <div className="flex justify-between text-xs text-gray-400 mb-2">
-                        <span>Progresso</span>
-                        <span>R$ 450k / R$ 1M</span>
-                    </div>
-                    <div className="h-2 w-full bg-[#0b120f] rounded-full overflow-hidden mb-4">
-                        <div className="h-full bg-green-500 w-[45%] rounded-full"></div>
-                    </div>
-                    <button className="text-green-500 text-sm font-bold hover:underline">Ver detalhes da meta</button>
+                    {activeGoal ? (
+                        <>
+                            <div className="flex justify-between text-xs text-gray-400 mb-2">
+                                <span>Progresso</span>
+                                <span>
+                                    {formatCurrency(activeGoal.goal.current_amount)} / {formatCurrency(activeGoal.goal.target_amount)}
+                                </span>
+                            </div>
+                            <div className="h-2 w-full bg-[#0b120f] rounded-full overflow-hidden mb-4">
+                                <div
+                                    className="h-full bg-green-500 rounded-full transition-all duration-500"
+                                    style={{ width: `${Math.min(100, activeGoal.progress)}%` }}
+                                ></div>
+                            </div>
+                            <div className="flex justify-between items-center">
+                                <span className="text-xs text-gray-500">
+                                    {activeGoal.progress.toFixed(1)}% concluído
+                                </span>
+                                <button
+                                    onClick={() => setGoalModalOpen(true)}
+                                    className="text-green-500 text-sm font-bold hover:underline"
+                                >
+                                    Editar meta
+                                </button>
+                            </div>
+                        </>
+                    ) : (
+                        <p className="text-gray-500 text-sm">
+                            Nenhuma meta definida. Crie uma meta para acompanhar seu progresso!
+                        </p>
+                    )}
                 </div>
 
-                <div className="bg-green-900/20 border border-green-500/30 rounded-3xl p-6 flex flex-col items-center justify-center text-center border-dashed">
+                {/* Card 3: Definir Nova Meta */}
+                <div
+                    onClick={() => { resetGoalForm(); setGoalModalOpen(true); }}
+                    className="bg-green-900/20 border border-green-500/30 rounded-3xl p-6 flex flex-col items-center justify-center text-center border-dashed cursor-pointer hover:bg-green-900/30 hover:border-green-500/50 transition-all"
+                >
                     <div className="w-10 h-10 rounded-full bg-green-500 text-[#0b120f] flex items-center justify-center mb-3">
                         <Plus size={24} />
                     </div>
@@ -294,9 +390,15 @@ export const NetWorth: React.FC = () => {
             </div>
 
             {/* Modal Asset */}
-            {isAssetModalOpen && (
-                <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-                    <div className="bg-[#15221c] border border-[#1e332a] rounded-3xl p-8 w-full max-w-md">
+            {isAssetModalOpen && createPortal(
+                <div className="fixed inset-0 bg-black/90 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm">
+                    <div className="bg-gradient-to-b from-[#1c2e26] to-[#15221c] border border-white/10 rounded-3xl p-8 w-full max-w-md shadow-[0_20px_50px_rgba(0,0,0,0.5)] animate-fade-in relative">
+                        <button
+                            onClick={() => setAssetModalOpen(false)}
+                            className="absolute top-4 right-4 text-gray-500 hover:text-white"
+                        >
+                            <X size={24} />
+                        </button>
                         <h3 className="text-xl font-bold text-white mb-4">Adicionar Ativo</h3>
                         <form onSubmit={handleAddAsset} className="space-y-4">
                             <input placeholder="Nome (ex: Casa de Praia)" className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl p-3" value={itemName} onChange={e => setItemName(e.target.value)} />
@@ -307,7 +409,7 @@ export const NetWorth: React.FC = () => {
                                 <label className="text-gray-400 text-xs mb-2 block">Ícone</label>
                                 <div className="flex gap-2">
                                     {['home', 'car', 'investment', 'other'].map(ic => (
-                                        <button key={ic} type="button" onClick={() => setItemIcon(ic)} className={`p - 2 rounded - lg border ${itemIcon === ic ? 'bg-green-500 text-black border-green-500' : 'bg-[#0b120f] border-gray-700 text-gray-400'} `}>
+                                        <button key={ic} type="button" onClick={() => setItemIcon(ic)} className={`p-2 rounded-lg border ${itemIcon === ic ? 'bg-green-500 text-black border-green-500' : 'bg-[#0b120f] border-gray-700 text-gray-400'}`}>
                                             {getIcon(ic, true)}
                                         </button>
                                     ))}
@@ -316,17 +418,24 @@ export const NetWorth: React.FC = () => {
 
                             <div className="flex gap-3 pt-4">
                                 <button type="button" onClick={() => setAssetModalOpen(false)} className="flex-1 py-3 text-gray-400 hover:text-white">Cancelar</button>
-                                <button type="submit" className="flex-1 bg-green-500 text-black font-bold rounded-xl">Salvar</button>
+                                <button type="submit" className="flex-1 bg-axxy-primary text-black font-bold py-3 rounded-xl">Salvar</button>
                             </div>
                         </form>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
             {/* Modal Liability */}
-            {isLiabilityModalOpen && (
-                <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-                    <div className="bg-[#15221c] border border-[#1e332a] rounded-3xl p-8 w-full max-w-md">
+            {isLiabilityModalOpen && createPortal(
+                <div className="fixed inset-0 bg-black/90 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm">
+                    <div className="bg-gradient-to-b from-[#1c2e26] to-[#15221c] border border-white/10 rounded-3xl p-8 w-full max-w-md shadow-[0_20px_50px_rgba(0,0,0,0.5)] animate-fade-in relative">
+                        <button
+                            onClick={() => setLiabilityModalOpen(false)}
+                            className="absolute top-4 right-4 text-gray-500 hover:text-white"
+                        >
+                            <X size={24} />
+                        </button>
                         <h3 className="text-xl font-bold text-white mb-4">Adicionar Passivo</h3>
                         <form onSubmit={handleAddLiability} className="space-y-4">
                             <input placeholder="Nome (ex: Empréstimo)" className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl p-3" value={itemName} onChange={e => setItemName(e.target.value)} />
@@ -337,7 +446,7 @@ export const NetWorth: React.FC = () => {
                                 <label className="text-gray-400 text-xs mb-2 block">Ícone</label>
                                 <div className="flex gap-2">
                                     {['loan', 'card', 'car', 'other'].map(ic => (
-                                        <button key={ic} type="button" onClick={() => setItemIcon(ic)} className={`p - 2 rounded - lg border ${itemIcon === ic ? 'bg-red-500 text-white border-red-500' : 'bg-[#0b120f] border-gray-700 text-gray-400'} `}>
+                                        <button key={ic} type="button" onClick={() => setItemIcon(ic)} className={`p-2 rounded-lg border ${itemIcon === ic ? 'bg-red-500 text-white border-red-500' : 'bg-[#0b120f] border-gray-700 text-gray-400'}`}>
                                             {getIcon(ic, false)}
                                         </button>
                                     ))}
@@ -346,11 +455,67 @@ export const NetWorth: React.FC = () => {
 
                             <div className="flex gap-3 pt-4">
                                 <button type="button" onClick={() => setLiabilityModalOpen(false)} className="flex-1 py-3 text-gray-400 hover:text-white">Cancelar</button>
-                                <button type="submit" className="flex-1 bg-green-500 text-black font-bold rounded-xl">Salvar</button>
+                                <button type="submit" className="flex-1 bg-axxy-primary text-black font-bold py-3 rounded-xl">Salvar</button>
                             </div>
                         </form>
                     </div>
-                </div>
+                </div>,
+                document.body
+            )}
+
+            {/* Modal Goal */}
+            {isGoalModalOpen && createPortal(
+                <div className="fixed inset-0 bg-black/90 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm">
+                    <div className="bg-gradient-to-b from-[#1c2e26] to-[#15221c] border border-white/10 rounded-3xl p-8 w-full max-w-md shadow-[0_20px_50px_rgba(0,0,0,0.5)] animate-fade-in relative">
+                        <button
+                            onClick={() => setGoalModalOpen(false)}
+                            className="absolute top-4 right-4 text-gray-500 hover:text-white"
+                        >
+                            <X size={24} />
+                        </button>
+                        <h3 className="text-xl font-bold text-white mb-2">Nova Meta de Patrimônio</h3>
+                        <p className="text-gray-400 text-sm mb-6">Defina um objetivo para acumulação de patrimônio.</p>
+
+                        <form onSubmit={handleCreateGoal} className="space-y-4">
+                            <div>
+                                <label className="text-gray-400 text-xs mb-2 block">Nome da Meta</label>
+                                <input
+                                    placeholder="Ex: Primeiro Milhão, Aposentadoria"
+                                    className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl p-3"
+                                    value={goalName}
+                                    onChange={e => setGoalName(e.target.value)}
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-gray-400 text-xs mb-2 block">Valor Alvo (R$)</label>
+                                <input
+                                    type="number"
+                                    placeholder="1000000"
+                                    className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl p-3"
+                                    value={goalTarget}
+                                    onChange={e => setGoalTarget(e.target.value)}
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-gray-400 text-xs mb-2 block">Prazo (opcional)</label>
+                                <input
+                                    type="date"
+                                    className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl p-3"
+                                    value={goalDeadline}
+                                    onChange={e => setGoalDeadline(e.target.value)}
+                                />
+                            </div>
+
+                            <div className="flex gap-3 pt-4">
+                                <button type="button" onClick={() => setGoalModalOpen(false)} className="flex-1 py-3 text-gray-400 hover:text-white">Cancelar</button>
+                                <button type="submit" className="flex-1 bg-axxy-primary text-black font-bold py-3 rounded-xl">Criar Meta</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>,
+                document.body
             )}
         </div>
     );

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { MoreVertical, Plus, Landmark, CreditCard, PiggyBank, Wallet, Trash2, Pencil } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { MoreVertical, Plus, Landmark, CreditCard, PiggyBank, Wallet, Trash2, Pencil, X } from 'lucide-react';
 import { Account } from '../types';
 import { apiService } from '../services/apiService';
 import { formatCurrency, formatCurrencyInput, parseCurrencyInput } from '../utils/formatters';
@@ -136,14 +137,14 @@ export const Accounts: React.FC = () => {
       </div>
 
       {/* Modal - New Account */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-[#15221c] border border-[#1e332a] rounded-3xl w-full max-w-lg shadow-2xl animate-fade-in relative">
+      {isModalOpen && createPortal(
+        <div className="fixed inset-0 bg-black/90 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-gradient-to-b from-[#1c2e26] to-[#15221c] border border-white/10 rounded-3xl w-full max-w-lg shadow-[0_20px_50px_rgba(0,0,0,0.5)] animate-fade-in relative">
             <button
               onClick={() => setIsModalOpen(false)}
               className="absolute top-4 right-4 text-gray-500 hover:text-white"
             >
-              <Plus size={24} className="rotate-45" />
+              <X size={24} />
             </button>
 
             <div className="p-8">
@@ -213,7 +214,8 @@ export const Accounts: React.FC = () => {
               </form>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
