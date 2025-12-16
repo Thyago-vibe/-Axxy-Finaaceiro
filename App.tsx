@@ -16,6 +16,7 @@ import { AISettings } from './components/AISettings';
 import { InterconnectedSummary } from './components/InterconnectedSummary';
 import { PredictiveAnalysis } from './components/PredictiveAnalysis';
 import { NetWorth } from './components/NetWorth';
+import { PaycheckAllocation } from './components/PaycheckAllocation';
 import { Transaction, UserProfile, Account } from './types';
 import { Bell, Menu } from 'lucide-react';
 import { apiService } from './services/apiService';
@@ -132,6 +133,8 @@ const App: React.FC = () => {
         return <FinancialHealth />;
       case 'predictive-analysis':
         return <PredictiveAnalysis />;
+      case 'allocation':
+        return <PaycheckAllocation />;
       case 'net-worth':
         return <NetWorth />;
       case 'reports':

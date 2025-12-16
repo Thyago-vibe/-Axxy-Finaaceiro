@@ -1,5 +1,6 @@
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Depends, Query
+from pydantic import BaseModel
 from sqlmodel import SQLModel, Field, Session, create_engine, select
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timedelta
@@ -116,6 +117,7 @@ class Debt(SQLModel, table=True):
     debtType: str = "parcelado"
     totalInstallments: Optional[int] = None
     currentInstallment: Optional[int] = None
+    category: str = Field(default="Outros")
 
 class Alert(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -156,6 +158,27 @@ class NetWorthGoal(SQLModel, table=True):
     deadline: Optional[str] = None  # Data limite (YYYY-MM-DD)
     created_at: str = ""  # Data de criação
     is_active: bool = True  # Se é a meta ativa
+
+
+class PaycheckAllocation(SQLModel, table=True):
+    """Alocação de salário quinzenal - armazena o cabeçalho da alocação"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    paycheck_date: str  # Data do pagamento (YYYY-MM-DD)
+    paycheck_amount: float  # Valor recebido
+    created_at: str = ""  # Data de criação
+    status: str = "draft"  # draft, applied, cancelled
+
+
+class AllocationItem(SQLModel, table=True):
+    """Itens individuais de uma alocação"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    allocation_id: int = Field(foreign_key="paycheckallocation.id")
+    category: str  # "essentials", "goals", "budgets", "safety_margin"
+    name: str  # Nome do item (ex: "Aluguel", "Viagem")
+    amount: float
+    percentage: float
+    reference_id: Optional[int] = None  # ID da dívida/meta/orçamento relacionado
+    reference_type: Optional[str] = None  # "debt", "goal", "budget"
 
 
 # ==========================================
@@ -1321,9 +1344,17 @@ def read_debts(session: Session = Depends(get_session)):
 
 @app.post("/api/debts/", response_model=Debt)
 def create_debt(debt: Debt, session: Session = Depends(get_session)):
+    # Garantir que defaults sejam respeitados se não enviados
+    if not debt.category:
+        debt.category = "Outros"
+        
     session.add(debt)
     session.commit()
     session.refresh(debt)
+    
+    # Criar transação correspondente se for dívida nova (opcional, dependendo da lógica de negócio)
+    # Por enquanto apenas cria a dívida
+    
     return debt
 
 @app.put("/api/debts/{debt_id}/", response_model=Debt)
@@ -1338,11 +1369,17 @@ def update_debt(debt_id: int, debt_data: Debt, session: Session = Depends(get_se
     debt.monthly = debt_data.monthly
     debt.dueDate = debt_data.dueDate
     debt.status = debt_data.status
-    debt.isUrgent = debt_data.isUrgent
-    debt.debtType = debt_data.debtType
-    debt.totalInstallments = debt_data.totalInstallments
-    debt.currentInstallment = debt_data.currentInstallment
-    
+    if "isUrgent" in debt_data.model_fields_set: # Use model_fields_set for Pydantic v2+ partial updates
+        debt.isUrgent = debt_data.isUrgent
+    if "debtType" in debt_data.model_fields_set:
+        debt.debtType = debt_data.debtType
+    if "totalInstallments" in debt_data.model_fields_set:
+        debt.totalInstallments = debt_data.totalInstallments
+    if "currentInstallment" in debt_data.model_fields_set:
+        debt.currentInstallment = debt_data.currentInstallment
+    if "category" in debt_data.model_fields_set:
+        debt.category = debt_data.category
+        
     session.add(debt)
     session.commit()
     session.refresh(debt)
@@ -1366,6 +1403,55 @@ def delete_debt(debt_id: int, session: Session = Depends(get_session)):
     session.delete(debt)
     session.commit()
     return {"ok": True}
+
+class DebtPayment(BaseModel):
+    amount: float
+    accountId: int
+    date: str
+
+@app.post("/api/debts/{debt_id}/pay/")
+def pay_debt(debt_id: int, payment: DebtPayment, session: Session = Depends(get_session)):
+    """Registra um pagamento de dívida, criando uma transação e atualizando saldo."""
+    debt = session.get(Debt, debt_id)
+    if not debt:
+        raise HTTPException(status_code=404, detail="Dívida não encontrada")
+        
+    account = session.get(Account, payment.accountId)
+    if not account:
+        raise HTTPException(status_code=404, detail="Conta não encontrada")
+        
+    # 1. Criar Transação de Despesa
+    transaction = Transaction(
+        description=f"Pagamento: {debt.name}",
+        amount=payment.amount,
+        type="expense",
+        category=debt.category or "Dívidas",
+        date=payment.date,
+        accountId=payment.accountId
+    )
+    session.add(transaction)
+    
+    # 2. Atualizar Saldo da Conta
+    account.balance -= payment.amount
+    session.add(account)
+    
+    # 3. Atualizar Dívida (Valor Restante)
+    if debt.remaining > 0:
+        debt.remaining = max(0, debt.remaining - payment.amount)
+        
+    # 4. Atualizar Parcela Atual (se for parcelado)
+    if debt.debtType == 'parcelado' and debt.currentInstallment and debt.totalInstallments:
+        if debt.currentInstallment < debt.totalInstallments:
+             debt.currentInstallment += 1
+             
+    # 5. Atualizar Status se quitado
+    if debt.remaining == 0 and debt.debtType != 'fixo':
+        debt.status = "Em dia" # Ou finalizar? Por enquanto 'Em dia'
+        
+    session.commit()
+    session.refresh(debt)
+    
+    return {"success": True, "new_remaining": debt.remaining}
 
 @app.get("/api/financial-health/summary/")
 def get_financial_health_summary(session: Session = Depends(get_session)):
@@ -1408,6 +1494,25 @@ def read_alerts(session: Session = Depends(get_session)):
 
 @app.post("/api/alerts/", response_model=Alert)
 def create_alert(alert: Alert, session: Session = Depends(get_session)):
+    session.add(alert)
+    session.commit()
+    session.refresh(alert)
+    return alert
+
+@app.put("/api/alerts/{alert_id}/", response_model=Alert)
+def update_alert(alert_id: int, alert_data: Alert, session: Session = Depends(get_session)):
+    """Atualiza um alerta existente (ativar/desativar, mudar threshold, etc)."""
+    alert = session.get(Alert, alert_id)
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alerta não encontrado")
+    
+    alert.category = alert_data.category
+    alert.budget = alert_data.budget
+    alert.threshold = alert_data.threshold
+    alert.enabled = alert_data.enabled
+    alert.iconName = alert_data.iconName
+    alert.colorClass = alert_data.colorClass
+    
     session.add(alert)
     session.commit()
     session.refresh(alert)
@@ -2037,6 +2142,75 @@ def get_net_worth_ai_insight(session: Session = Depends(get_session)):
 # 6. ROTAS AVANÇADAS (AGREGADORES E IA)
 # ==========================================
 
+def get_unified_transactions(session: Session, start_date: str, end_date: str, account_filter: str = 'all') -> List[Transaction]:
+    """
+    Retorna uma lista unificada de transações reais e virtuais (dívidas a pagar).
+    Evita contagem duplicada se a dívida já tiver sido paga (existir transação real).
+    """
+    # 1. Buscar transações reais
+    query = select(Transaction).where(Transaction.date >= start_date).where(Transaction.date <= end_date)
+    if account_filter != 'all':
+        query = query.where(Transaction.accountId == int(account_filter))
+    
+    real_transactions = session.exec(query).all()
+    
+    # Se filtrando por conta específica, não incluímos dívidas virtuais (pois não sabemos de qual conta sairão)
+    # A menos que o usuário queira ver projeção. Por segurança, incluímos apenas em 'all' ou se decidirmos.
+    # Decisão: Incluir apenas em 'all' como acordado no plano.
+    if account_filter != 'all':
+        return list(real_transactions)
+
+    # 2. Buscar dívidas que vencem no período e não estão pagas
+    # Assumimos que 'Em dia' = Paga ou não vencida. Mas se gerou transação, ok.
+    # Se status for 'Pendente' ou 'Atrasado', projetamos como despesa.
+    debts = session.exec(select(Debt)).all()
+    
+    virtual_transactions = []
+    
+    for debt in debts:
+        if not debt.dueDate:
+             continue
+             
+        # Verificar se vence no período
+        # A data de vencimento da dívida é YYYY-MM-DD
+        debt_date = debt.dueDate.split('T')[0]
+        
+        if start_date <= debt_date <= end_date:
+            # Check de Status: Se já está paga ("Em dia" e remaining == 0), não criamos virtual a menos que
+            # queiramos mostrar o histórico. Mas se está paga, deveria ter uma transação real criada pelo "Pagar".
+            # Se a transação real existe, o loop de deduplicação abaixo vai pegar.
+            # Se não existe transação real (pagou por fora?), confiamos no status.
+            
+            # Valor a considerar: parcela mensal (se parcelado/fixo) ou restante
+            amount = debt.monthly if debt.monthly > 0 else debt.remaining
+            
+            # Deduplicação: Verificar se existe transação real com mesmo valor e descrição similar
+            # Isso "casa" o pagamento real com a dívida
+            is_paid = False
+            for t in real_transactions:
+                # Logica simples de match: mesmo valor E (nome da dívida na descrição OU categoria igual)
+                if t.type == 'expense' and abs(t.amount - amount) < 0.01:
+                    if debt.name.lower() in t.description.lower() or t.category == debt.category:
+                        is_paid = True
+                        break
+            
+            if not is_paid and debt.status in ["Pendente", "Atrasado"]:
+                # Criar transação virtual
+                virtual_t = Transaction(
+                    id=-debt.id, # ID negativo para indicar virtual
+                    description=f"[Previsto] {debt.name}",
+                    amount=amount,
+                    type="expense",
+                    date=debt_date,
+                    category=debt.category or "Dívidas",
+                    status="pending",
+                    accountId=None
+                )
+                virtual_transactions.append(virtual_t)
+
+    return list(real_transactions) + virtual_transactions
+
+
 @app.get("/api/reports/")
 def get_reports(range: str = 'this-month', account: str = 'all', session: Session = Depends(get_session)):
     """
@@ -2055,10 +2229,19 @@ def get_reports(range: str = 'this-month', account: str = 'all', session: Sessio
         "90d": 90,
     }
     days = range_map.get(range, 30)
-    cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+    today = datetime.now()
+    cutoff_date = (today - timedelta(days=days)).strftime("%Y-%m-%d")
+    today_str = today.strftime("%Y-%m-%d")
+
+    # Obter transações unificadas (Reais + Dívidas)
+    # Buscamos até hoje, mas para relatórios pode ser interessante ver o consolidado do período
+    unified_transactions = get_unified_transactions(session, cutoff_date, today_str, account)
     
-    # Filtrar por período e tipo (apenas despesas)
-    filtered = [t for t in transactions if t.date >= cutoff and t.type == 'expense']
+    # Filtrar por tipo (apenas despesas)
+    filtered = [
+        t for t in unified_transactions 
+        if t.type == 'expense'
+    ]
     
     total_spent = sum(t.amount for t in filtered)
     
@@ -2107,9 +2290,20 @@ def get_reports(range: str = 'this-month', account: str = 'all', session: Sessio
 
 
 @app.get("/api/reports/cash-flow/")
-def get_cash_flow(date_range: str = "this-year", session: Session = Depends(get_session)):
+@app.get("/api/reports/cash-flow/")
+@app.get("/api/reports/cash-flow/")
+def get_cash_flow(date_range: str = "this-year", account: str = 'all', session: Session = Depends(get_session)):
     """Retorna dados de fluxo de caixa (receitas vs despesas) por mês."""
-    transactions = session.exec(select(Transaction)).all()
+    
+    # Determinar range para buscar transações
+    today = datetime.now()
+    range_months = {"this-month": 1, "30-days": 1, "this-year": 12, "7d": 1, "30d": 1, "90d": 3}
+    num_months = range_months.get(date_range, 6)
+    
+    start_date = (today - timedelta(days=30 * num_months)).strftime("%Y-%m-%d")
+    end_date = today.strftime("%Y-%m-%d")
+    
+    transactions = get_unified_transactions(session, start_date, end_date, account)
     
     # Determinar número de meses baseado no range
     range_months = {
@@ -2148,9 +2342,19 @@ def get_cash_flow(date_range: str = "this-year", session: Session = Depends(get_
 
 
 @app.get("/api/reports/spending-trends/")
-def get_spending_trends(date_range: str = "this-year", session: Session = Depends(get_session)):
+@app.get("/api/reports/spending-trends/")
+def get_spending_trends(date_range: str = "this-year", account: str = 'all', session: Session = Depends(get_session)):
     """Retorna tendência de gastos ao longo dos meses."""
-    transactions = session.exec(select(Transaction)).all()
+    
+    # Determinar range
+    today = datetime.now()
+    range_months = {"this-month": 3, "30-days": 3, "this-year": 12, "7d": 3, "30d": 3, "90d": 6}
+    num_months = range_months.get(date_range, 6)
+
+    start_date = (today - timedelta(days=30 * num_months)).strftime("%Y-%m-%d")
+    end_date = today.strftime("%Y-%m-%d")
+    
+    transactions = get_unified_transactions(session, start_date, end_date, account)
     
     range_months = {
         "this-month": 3,
@@ -2192,22 +2396,21 @@ def get_spending_trends(date_range: str = "this-year", session: Session = Depend
 
 
 @app.get("/api/reports/income-sources/")
-def get_income_sources(date_range: str = "this-month", session: Session = Depends(get_session)):
+@app.get("/api/reports/income-sources/")
+def get_income_sources(date_range: str = "this-month", account: str = 'all', session: Session = Depends(get_session)):
     """Retorna receitas agrupadas por categoria/fonte."""
-    transactions = session.exec(select(Transaction)).all()
     
-    range_map = {
-        "this-month": 30,
-        "30-days": 30,
-        "this-year": 365,
-        "7d": 7,
-        "30d": 30,
-        "90d": 90,
-    }
+    range_map = {"this-month": 30, "30-days": 30, "this-year": 365, "7d": 7, "30d": 30, "90d": 90}
     days = range_map.get(date_range, 30)
-    cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
     
-    filtered = [t for t in transactions if t.date >= cutoff and t.type == "income"]
+    today = datetime.now()
+    start_date = (today - timedelta(days=days)).strftime("%Y-%m-%d")
+    end_date = today.strftime("%Y-%m-%d")
+    
+    transactions = get_unified_transactions(session, start_date, end_date, account)
+    
+    # Filtrar apenas incomes (Unified normalmente retorna despesas virtuais, mas transacoes reais de income virão junto)
+    filtered = [t for t in transactions if t.type == "income"]
     
     categories = {}
     total_income = sum(t.amount for t in filtered)
@@ -2429,3 +2632,357 @@ def get_predictive_analysis(session: Session = Depends(get_session)):
         "baseExpense": monthly_expense,
         "scenarios": scenarios
     }
+
+
+# ==========================================
+# PAYCHECK ALLOCATION (Alocação Quinzenal)
+# ==========================================
+
+class AllocationRequest(BaseModel):
+    paycheck_amount: float
+    paycheck_date: str
+
+
+@app.post("/api/allocation/suggest")
+def suggest_allocation(request: AllocationRequest, session: Session = Depends(get_session)):
+    """
+    Gera sugestão inteligente de alocação do salário quinzenal.
+    Analisa dívidas, metas, orçamentos e sugere distribuição otimizada.
+    """
+    amount = request.paycheck_amount
+    paycheck_date = request.paycheck_date
+    
+    # Buscar dados financeiros
+    debts = session.exec(select(Debt)).all()
+    goals = session.exec(select(Goal)).all()
+    budgets = session.exec(select(Budget)).all()
+    transactions = session.exec(select(Transaction)).all()
+    
+    # Ordenar dívidas por urgência e data de vencimento
+    def debt_priority(d):
+        try:
+            due = datetime.strptime(d.dueDate, "%Y-%m-%d")
+            days_until = (due - datetime.now()).days
+            urgency_score = 1000 if d.isUrgent else 0
+            return -urgency_score + days_until  # Menores vêm primeiro
+        except:
+            return 999
+    
+    sorted_debts = sorted(debts, key=debt_priority)
+    
+    # Ordenar metas por deadline
+    def goal_priority(g):
+        try:
+            deadline = datetime.strptime(g.deadline, "%Y-%m-%d")
+            progress = g.currentAmount / g.targetAmount if g.targetAmount > 0 else 1
+            return (deadline - datetime.now()).days * (1 - progress)
+        except:
+            return 999
+    
+    sorted_goals = sorted(goals, key=goal_priority)
+    
+    # Calcular gastos médios por categoria nos últimos 3 meses
+    budget_averages = {}
+    for b in budgets:
+        cat_expenses = [t.amount for t in transactions if t.category == b.category and t.type == 'expense']
+        budget_averages[b.category] = sum(cat_expenses) / 3 if cat_expenses else b.limit / 2
+    
+    # Preparar dados para a IA
+    debts_info = [
+        f"- {d.name}: R$ {d.monthly:.2f}/mês, vence dia {d.dueDate}, {'URGENTE' if d.isUrgent else d.status}"
+        for d in sorted_debts[:10]
+    ]
+    
+    goals_info = [
+        f"- {g.name}: {(g.currentAmount/g.targetAmount*100):.0f}% completa, faltam R$ {g.targetAmount - g.currentAmount:.2f}, prazo {g.deadline}"
+        for g in sorted_goals[:5]
+    ]
+    
+    budgets_info = [
+        f"- {b.category}: limite R$ {b.limit:.2f}, gasto médio mensal R$ {budget_averages.get(b.category, 0):.2f}"
+        for b in budgets[:8]
+    ]
+    
+    prompt = f"""
+Analise a situação financeira e sugira como alocar o salário quinzenal de R$ {amount:.2f}.
+
+DÍVIDAS E CONTAS (pagar primeiro):
+{chr(10).join(debts_info) if debts_info else "- Nenhuma dívida cadastrada"}
+
+METAS DE POUPANÇA:
+{chr(10).join(goals_info) if goals_info else "- Nenhuma meta cadastrada"}
+
+ORÇAMENTOS VARIÁVEIS:
+{chr(10).join(budgets_info) if budgets_info else "- Nenhum orçamento cadastrado"}
+
+Regras de alocação:
+1. Priorize dívidas urgentes e com vencimento nos próximos 15 dias
+2. Reserve 5-15% para margem de segurança (imprevistos)
+3. Contribua para metas atrasadas ou próximas do prazo
+4. Distribua o restante proporcionalmente entre orçamentos
+
+Retorne APENAS JSON nesta estrutura:
+{{
+    "categories": [
+        {{
+            "id": "essentials",
+            "name": "Essenciais",
+            "color": "#ef4444",
+            "items": [
+                {{"name": "Nome da despesa", "amount": 0.00, "reference_type": "debt", "reference_id": null}}
+            ]
+        }},
+        {{
+            "id": "goals",
+            "name": "Metas",
+            "color": "#3b82f6",
+            "items": [
+                {{"name": "Nome da meta", "amount": 0.00, "reference_type": "goal", "reference_id": null}}
+            ]
+        }},
+        {{
+            "id": "budgets",
+            "name": "Orçamentos",
+            "color": "#a855f7",
+            "items": [
+                {{"name": "Categoria", "amount": 0.00, "reference_type": "budget", "reference_id": null}}
+            ]
+        }},
+        {{
+            "id": "safety_margin",
+            "name": "Margem de Segurança",
+            "color": "#eab308",
+            "items": [
+                {{"name": "Reserva para imprevistos", "amount": 0.00}}
+            ]
+        }}
+    ],
+    "insights": [
+        "Insight 1 sobre a alocação",
+        "Insight 2 sobre metas ou dívidas",
+        "Insight 3 sobre economia"
+    ]
+}}
+"""
+    
+    ai_result = ask_ai_analysis(prompt, session)
+    
+    # Fallback se IA falhar
+    if not ai_result or "categories" not in ai_result:
+        # Distribuição padrão: 50% essenciais, 20% metas, 25% orçamentos, 5% margem
+        essentials_amt = amount * 0.50
+        goals_amt = amount * 0.20
+        budgets_amt = amount * 0.25
+        safety_amt = amount * 0.05
+        
+        # Distribuir entre dívidas proporcionalmente
+        essential_items = []
+        if sorted_debts:
+            debt_total = sum(d.monthly for d in sorted_debts[:4])
+            for d in sorted_debts[:4]:
+                item_amount = (d.monthly / debt_total * essentials_amt) if debt_total > 0 else essentials_amt / len(sorted_debts[:4])
+                essential_items.append({
+                    "name": d.name,
+                    "amount": round(item_amount, 2),
+                    "reference_type": "debt",
+                    "reference_id": d.id
+                })
+        else:
+            essential_items.append({"name": "Custos fixos gerais", "amount": round(essentials_amt, 2)})
+        
+        # Distribuir entre metas
+        goal_items = []
+        if sorted_goals:
+            for g in sorted_goals[:2]:
+                goal_items.append({
+                    "name": g.name,
+                    "amount": round(goals_amt / len(sorted_goals[:2]), 2),
+                    "reference_type": "goal",
+                    "reference_id": g.id
+                })
+        else:
+            goal_items.append({"name": "Reserva de emergência", "amount": round(goals_amt, 2)})
+        
+        # Distribuir entre orçamentos
+        budget_items = []
+        if budgets:
+            for b in budgets[:4]:
+                budget_items.append({
+                    "name": b.category,
+                    "amount": round(budgets_amt / len(budgets[:4]), 2),
+                    "reference_type": "budget",
+                    "reference_id": b.id
+                })
+        else:
+            budget_items.append({"name": "Gastos variáveis", "amount": round(budgets_amt, 2)})
+        
+        ai_result = {
+            "categories": [
+                {"id": "essentials", "name": "Essenciais", "color": "#ef4444", "items": essential_items},
+                {"id": "goals", "name": "Metas", "color": "#3b82f6", "items": goal_items},
+                {"id": "budgets", "name": "Orçamentos", "color": "#a855f7", "items": budget_items},
+                {"id": "safety_margin", "name": "Margem de Segurança", "color": "#eab308", "items": [
+                    {"name": "Reserva para imprevistos", "amount": round(safety_amt, 2)}
+                ]}
+            ],
+            "insights": [
+                "Distribuição baseada no método 50/30/20 adaptado",
+                f"Você tem {len(debts)} dívidas cadastradas no sistema",
+                f"{'Configure a IA para sugestões personalizadas' if not debts else 'Alocação calculada automaticamente'}"
+            ]
+        }
+    
+    # Calcular percentuais e totais
+    for cat in ai_result["categories"]:
+        cat_total = sum(item.get("amount", 0) for item in cat.get("items", []))
+        cat["amount"] = round(cat_total, 2)
+        cat["percentage"] = round((cat_total / amount * 100) if amount > 0 else 0, 1)
+    
+    # Criar registro no banco
+    allocation = PaycheckAllocation(
+        paycheck_date=paycheck_date,
+        paycheck_amount=amount,
+        created_at=datetime.now().isoformat(),
+        status="draft"
+    )
+    session.add(allocation)
+    session.commit()
+    session.refresh(allocation)
+    
+    # Salvar itens
+    for cat in ai_result["categories"]:
+        for item in cat.get("items", []):
+            alloc_item = AllocationItem(
+                allocation_id=allocation.id,
+                category=cat["id"],
+                name=item.get("name", ""),
+                amount=item.get("amount", 0),
+                percentage=round((item.get("amount", 0) / amount * 100) if amount > 0 else 0, 1),
+                reference_id=item.get("reference_id"),
+                reference_type=item.get("reference_type")
+            )
+            session.add(alloc_item)
+    
+    session.commit()
+    
+    # Preparar dados do gráfico
+    chart_data = [
+        {"name": cat["name"], "value": cat["amount"], "color": cat["color"]}
+        for cat in ai_result["categories"]
+    ]
+    
+    return {
+        "id": allocation.id,
+        "paycheck_amount": amount,
+        "paycheck_date": paycheck_date,
+        "categories": ai_result["categories"],
+        "insights": ai_result.get("insights", []),
+        "chart_data": chart_data
+    }
+
+
+@app.post("/api/allocation/apply")
+def apply_allocation(data: dict, session: Session = Depends(get_session)):
+    """
+    Aplica a alocação aprovada.
+    Cria transações automáticas e atualiza metas/dívidas.
+    """
+    allocation_id = data.get("allocation_id")
+    
+    allocation = session.get(PaycheckAllocation, allocation_id)
+    if not allocation:
+        raise HTTPException(status_code=404, detail="Alocação não encontrada")
+    
+    if allocation.status == "applied":
+        raise HTTPException(status_code=400, detail="Alocação já foi aplicada")
+    
+    # Buscar itens da alocação
+    items = session.exec(
+        select(AllocationItem).where(AllocationItem.allocation_id == allocation_id)
+    ).all()
+    
+    # Buscar conta padrão (primeira conta disponível)
+    default_account = session.exec(select(Account)).first()
+    account_id = default_account.id if default_account else None
+    
+    created_transactions = []
+    updated_goals = []
+    
+    for item in items:
+        # Criar transação de despesa/alocação
+        if item.category != "safety_margin":  # Margem de segurança fica na conta
+            transaction = Transaction(
+                accountId=account_id,
+                description=f"Alocação quinzenal: {item.name}",
+                amount=item.amount,
+                type="expense",
+                date=allocation.paycheck_date,
+                category=item.name,
+                status="completed"
+            )
+            session.add(transaction)
+            created_transactions.append(item.name)
+        
+        # Atualizar meta se for do tipo goal
+        if item.reference_type == "goal" and item.reference_id:
+            goal = session.get(Goal, item.reference_id)
+            if goal:
+                goal.currentAmount += item.amount
+                session.add(goal)
+                updated_goals.append(goal.name)
+    
+    # Atualizar status da alocação
+    allocation.status = "applied"
+    session.add(allocation)
+    session.commit()
+    
+    return {
+        "success": True,
+        "message": "Alocação aplicada com sucesso!",
+        "transactions_created": len(created_transactions),
+        "goals_updated": updated_goals
+    }
+
+
+@app.get("/api/allocation/history")
+def get_allocation_history(session: Session = Depends(get_session)):
+    """
+    Retorna histórico de alocações anteriores.
+    """
+    allocations = session.exec(
+        select(PaycheckAllocation).order_by(PaycheckAllocation.id.desc())
+    ).all()
+    
+    result = []
+    for alloc in allocations:
+        items = session.exec(
+            select(AllocationItem).where(AllocationItem.allocation_id == alloc.id)
+        ).all()
+        
+        # Agrupar itens por categoria
+        categories = {}
+        for item in items:
+            if item.category not in categories:
+                categories[item.category] = {
+                    "id": item.category,
+                    "items": [],
+                    "total": 0
+                }
+            categories[item.category]["items"].append({
+                "name": item.name,
+                "amount": item.amount,
+                "percentage": item.percentage
+            })
+            categories[item.category]["total"] += item.amount
+        
+        result.append({
+            "id": alloc.id,
+            "paycheck_date": alloc.paycheck_date,
+            "paycheck_amount": alloc.paycheck_amount,
+            "status": alloc.status,
+            "created_at": alloc.created_at,
+            "categories": list(categories.values())
+        })
+    
+    return result
+

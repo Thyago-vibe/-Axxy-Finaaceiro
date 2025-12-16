@@ -31,6 +31,8 @@ export interface Category {
   color: string;
 }
 
+export type CreateCategoryDTO = Omit<Category, 'id'>;
+
 export interface Goal {
   id: string;
   name: string;
@@ -80,6 +82,7 @@ export interface Debt {
   debtType: 'fixo' | 'parcelado';
   totalInstallments?: number;  // Total de parcelas (para parcelado)
   currentInstallment?: number; // Parcela atual (para parcelado)
+  category?: string; // Categoria da dívida
 }
 
 export interface Alert {
@@ -200,3 +203,40 @@ export interface NetWorthDashboardData {
   history: { month: string; value: number }[]; // For evolution chart
   composition: { name: string; value: number; color: string }[]; // For pie chart
 }
+
+// --- Paycheck Allocation Types ---
+
+export interface AllocationItem {
+  name: string;
+  amount: number;
+  reference_id?: number | null;
+  reference_type?: 'debt' | 'goal' | 'budget' | null;
+}
+
+export interface AllocationCategory {
+  id: string;
+  name: string;
+  color: string;
+  amount: number;
+  percentage: number;
+  items: AllocationItem[];
+}
+
+export interface AllocationSuggestion {
+  id: number;
+  paycheck_amount: number;
+  paycheck_date: string;
+  categories: AllocationCategory[];
+  insights: string[];
+  chart_data: { name: string; value: number; color: string }[];
+}
+
+export interface PaycheckAllocationHistory {
+  id: number;
+  paycheck_date: string;
+  paycheck_amount: number;
+  status: 'draft' | 'applied' | 'cancelled';
+  created_at: string;
+  categories: { id: string; items: AllocationItem[]; total: number }[];
+}
+

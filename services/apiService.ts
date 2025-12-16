@@ -1,5 +1,5 @@
 
-import { Transaction, Goal, UserProfile, Budget, BudgetItem, Account, Category, Debt, Alert, LeakageAnalysis, ReportData, InterconnectedSummaryData, PredictionBaseData, NetWorthDashboardData, Asset, Liability } from '../types';
+import { Transaction, Goal, UserProfile, Budget, BudgetItem, Account, Category, Debt, Alert, LeakageAnalysis, ReportData, InterconnectedSummaryData, PredictionBaseData, NetWorthDashboardData, Asset, Liability, CreateCategoryDTO } from '../types';
 
 const API_URL = 'http://localhost:8000/api';
 
@@ -181,7 +181,7 @@ export const apiService = {
     const res = await fetch(`${API_URL}/categories/`);
     return handleApiResponse(res, []);
   },
-  createCategory: async (c: Category): Promise<Category> => {
+  createCategory: async (c: CreateCategoryDTO): Promise<Category> => {
     const res = await fetch(`${API_URL}/categories/`, { method: 'POST', headers, body: JSON.stringify(c) });
     return handleApiResponse(res);
   },
@@ -244,22 +244,25 @@ export const apiService = {
   },
 
   // Cash Flow (Fluxo de Caixa)
-  getCashFlow: async (range: string): Promise<{ month: string; income: number; expense: number; balance: number }[]> => {
-    const params = new URLSearchParams({ date_range: range });
+  // Cash Flow (Fluxo de Caixa)
+  getCashFlow: async (range: string, account: string = 'all'): Promise<{ month: string; income: number; expense: number; balance: number }[]> => {
+    const params = new URLSearchParams({ date_range: range, account });
     const res = await fetch(`${API_URL}/reports/cash-flow/?${params}`);
     return handleApiResponse(res, []);
   },
 
   // Spending Trends (Tendências de Gastos)
-  getSpendingTrends: async (range: string): Promise<{ month: string; value: number; change: number }[]> => {
-    const params = new URLSearchParams({ date_range: range });
+  // Spending Trends (Tendências de Gastos)
+  getSpendingTrends: async (range: string, account: string = 'all'): Promise<{ month: string; value: number; change: number }[]> => {
+    const params = new URLSearchParams({ date_range: range, account });
     const res = await fetch(`${API_URL}/reports/spending-trends/?${params}`);
     return handleApiResponse(res, []);
   },
 
   // Income Sources (Receitas por Fonte)
-  getIncomeSources: async (range: string): Promise<{ name: string; value: number; percentage: number; color: string }[]> => {
-    const params = new URLSearchParams({ date_range: range });
+  // Income Sources (Receitas por Fonte)
+  getIncomeSources: async (range: string, account: string = 'all'): Promise<{ name: string; value: number; percentage: number; color: string }[]> => {
+    const params = new URLSearchParams({ date_range: range, account });
     const res = await fetch(`${API_URL}/reports/income-sources/?${params}`);
     return handleApiResponse(res, []);
   },
@@ -388,5 +391,29 @@ export const apiService = {
       headers
     });
     return handleApiResponse(res);
+  },
+
+  // --- Paycheck Allocation ---
+  getAllocationSuggestion: async (amount: number, date: string): Promise<any> => {
+    const res = await fetch(`${API_URL}/allocation/suggest`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ paycheck_amount: amount, paycheck_date: date })
+    });
+    return handleApiResponse(res);
+  },
+
+  applyAllocation: async (allocationId: number): Promise<any> => {
+    const res = await fetch(`${API_URL}/allocation/apply`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ allocation_id: allocationId })
+    });
+    return handleApiResponse(res);
+  },
+
+  getAllocationHistory: async (): Promise<any[]> => {
+    const res = await fetch(`${API_URL}/allocation/history`);
+    return handleApiResponse(res, []);
   }
 };
