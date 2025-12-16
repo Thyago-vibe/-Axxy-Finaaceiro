@@ -24,25 +24,87 @@ const INSIGHT_ICONS: Record<string, { icon: React.ElementType; color: string }> 
     success: { icon: ThumbsUp, color: 'text-emerald-400' },
 };
 
-export const PaycheckAllocation: React.FC = () => {
-    const [amount, setAmount] = useState<string>('');
+interface PaycheckAllocationProps {
+    initialAmount?: number;
+    initialDate?: string;
+    onClearPending?: () => void;
+}
+
+export const PaycheckAllocation: React.FC<PaycheckAllocationProps> = ({
+    initialAmount,
+    initialDate,
+    onClearPending
+}) => {
+    const [amount, setAmount] = useState<string>(initialAmount ? String(initialAmount) : '');
     const [suggestion, setSuggestion] = useState<AllocationSuggestion | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['essentials']));
     const [isApplying, setIsApplying] = useState(false);
     const [appliedMessage, setAppliedMessage] = useState<string | null>(null);
 
-    // Get current date formatted
-    const currentDate = useMemo(() => {
-        const today = new Date();
-        const day = today.getDate();
-        // Determine if it's closer to day 10 or 25
-        const paycheckDay = day <= 17 ? 10 : 25;
-        const paycheckDate = new Date(today.getFullYear(), today.getMonth(), paycheckDay);
-        return paycheckDate.toISOString().split('T')[0];
-    }, []);
+    // Determine paycheck period (day 10 or 25) based on transaction date
+    const { currentDate, paycheckPeriod } = useMemo(() => {
+        let baseDate: Date;
+
+        if (initialDate) {
+            // Use the transaction date to determine the paycheck period
+            baseDate = new Date(initialDate + 'T12:00:00');
+        } else {
+            baseDate = new Date();
+        }
+
+        const day = baseDate.getDate();
+        const month = baseDate.getMonth();
+        const year = baseDate.getFullYear();
+
+        // Determine which paycheck period this date belongs to:
+        // Days 1-14 → Paycheck of day 10 (first half)
+        // Days 15-31 → Paycheck of day 25 (second half)
+        let paycheckDay: number;
+        let periodLabel: string;
+
+        if (day <= 14) {
+            paycheckDay = 10;
+            periodLabel = '1ª Quinzena (Dia 10)';
+        } else {
+            paycheckDay = 25;
+            periodLabel = '2ª Quinzena (Dia 25)';
+        }
+
+        const paycheckDate = new Date(year, month, paycheckDay);
+
+        return {
+            currentDate: paycheckDate.toISOString().split('T')[0],
+            paycheckPeriod: periodLabel
+        };
+    }, [initialDate]);
 
     const [paycheckDate, setPaycheckDate] = useState(currentDate);
+
+    // Auto-fetch when coming from transaction with initial amount
+    useEffect(() => {
+        if (initialAmount && initialAmount > 0) {
+            // Trigger suggestion fetch automatically
+            const fetchInitialSuggestion = async () => {
+                setIsLoading(true);
+                setAppliedMessage(null);
+                try {
+                    const data = await apiService.getAllocationSuggestion(initialAmount, paycheckDate);
+                    setSuggestion(data);
+                    setExpandedCategories(new Set(['essentials']));
+                } catch (error) {
+                    console.error('Error fetching allocation suggestion:', error);
+                } finally {
+                    setIsLoading(false);
+                    // Clear the pending state after processing
+                    if (onClearPending) {
+                        onClearPending();
+                    }
+                }
+            };
+            fetchInitialSuggestion();
+        }
+    }, [initialAmount, paycheckDate, onClearPending]);
 
     // Format amount for display
     const formatAmountDisplay = (value: string) => {
@@ -127,9 +189,21 @@ export const PaycheckAllocation: React.FC = () => {
                             <Calendar size={24} />
                         </div>
                         <div>
-                            <h2 className="text-2xl md:text-3xl font-bold text-white tracking-tight font-display">Alocação Quinzenal</h2>
+                            <div className="flex items-center gap-3">
+                                <h2 className="text-2xl md:text-3xl font-bold text-white tracking-tight font-display">Alocação Quinzenal</h2>
+                                {initialAmount && (
+                                    <span className="text-xs bg-blue-500/20 text-blue-400 px-3 py-1 rounded-full border border-blue-500/30 font-medium">
+                                        {paycheckPeriod}
+                                    </span>
+                                )}
+                            </div>
                             <p className="text-gray-400 text-sm mt-1">
                                 Pagamento de {new Date(paycheckDate + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                {initialDate && (
+                                    <span className="text-gray-500 ml-2">
+                                        • Transação em {new Date(initialDate + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                    </span>
+                                )}
                             </p>
                         </div>
                     </div>

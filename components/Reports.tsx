@@ -47,15 +47,15 @@ export const Reports: React.FC = () => {
       setData(reportData);
 
       // Fetch cash flow data
-      const cashFlow = await apiService.getCashFlow(dateRange).catch(() => null);
+      const cashFlow = await apiService.getCashFlow(dateRange, selectedAccount).catch(() => null);
       if (cashFlow) setCashFlowData(cashFlow);
 
       // Fetch trend data
-      const trends = await apiService.getSpendingTrends(dateRange).catch(() => null);
+      const trends = await apiService.getSpendingTrends(dateRange, selectedAccount).catch(() => null);
       if (trends) setTrendData(trends);
 
       // Fetch income sources
-      const sources = await apiService.getIncomeSources(dateRange).catch(() => null);
+      const sources = await apiService.getIncomeSources(dateRange, selectedAccount).catch(() => null);
       if (sources) setIncomeSourceData(sources);
     } catch (err) {
       console.error("Failed to load reports:", err);
@@ -177,7 +177,7 @@ export const Reports: React.FC = () => {
         <div className="bg-[#15221c] border border-[#1e332a] p-6 rounded-3xl">
           <p className="text-gray-400 text-sm mb-2">Total Gasto</p>
           <h3 className="text-4xl font-bold text-white mb-2">{formatCurrency(kpi.totalSpent)}</h3>
-          <p className={`${kpi.totalSpentChange > 0 ? 'text-red-400' : 'text-green-400'} text - xs font - medium flex items - center gap - 1`}>
+          <p className={`${kpi.totalSpentChange > 0 ? 'text-red-400' : 'text-green-400'} text-xs font-medium flex items-center gap-1`}>
             {kpi.totalSpentChange > 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
             {Math.abs(kpi.totalSpentChange)}% vs. mês anterior
           </p>

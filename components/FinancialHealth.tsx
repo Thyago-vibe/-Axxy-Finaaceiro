@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, X, AlertCircle, Sparkles, TrendingUp, Target, Zap, DollarSign } from 'lucide-react';
+import { Plus, Edit2, Trash2, X, AlertCircle, Sparkles, TrendingUp, Target, Zap, DollarSign, Tag, ChevronDown } from 'lucide-react';
 import { formatCurrency, formatCurrencyInput, parseCurrencyInput } from '../utils/formatters';
-import { Debt, Account } from '../types';
+import { Debt, Account, Category } from '../types';
 import { apiService } from '../services/apiService';
+import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 
 // Removendo createPortal temporariamente para simplicidade e compatibilidade
 // Usaremos um modal com z-index alto e fixed position direto no DOM
@@ -28,12 +29,47 @@ interface DebtPriority {
   valor_restante?: number;
 }
 
-export const FinancialHealth: React.FC = () => {
+interface FinancialHealthProps {
+  debts?: Debt[]; // Opcional - o componente busca seus próprios dados
+  onAddDebt?: () => void;
+  onUpdateDebts?: () => void;
+}
+
+export const FinancialHealth: React.FC<FinancialHealthProps> = ({ debts: initialDebts = [], onAddDebt, onUpdateDebts }) => {
   console.log('Rendering FinancialHealth Component'); // Debug Log
 
-  const [debts, setDebts] = useState<Debt[]>([]);
+  const [debts, setDebts] = useState<Debt[]>(initialDebts);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [chartView, setChartView] = useState<'status' | 'category'>('status');
+
+  // Cálculo de totalDebt movido para antes do useMemo para evitar erro de referência
+  const safeDebtsForCalc = Array.isArray(debts) ? debts : [];
+  const totalDebt = safeDebtsForCalc.reduce((sum, d) => sum + (typeof d.remaining === 'number' ? d.remaining : 0), 0);
+
+  // Mock data for Evolution Chart
+  const evolutionData = React.useMemo(() => {
+    const data = [];
+    const today = new Date();
+    // Generate last 6 months
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+      const monthName = d.toLocaleString('pt-BR', { month: 'short' });
+      // Mock past data: varies +/- 20% from current total, but last point is exact
+      // If totalDebt is 0, just random small numbers for visual
+      const baseVal = totalDebt || 1000;
+      const val = i === 0
+        ? totalDebt
+        : baseVal * (0.8 + Math.random() * 0.4);
+
+      data.push({
+        name: monthName.charAt(0).toUpperCase() + monthName.slice(1),
+        valor: val
+      });
+    }
+    return data;
+  }, [totalDebt]);
 
   // Estados para IA
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
@@ -53,7 +89,7 @@ export const FinancialHealth: React.FC = () => {
   });
   const [accounts, setAccounts] = useState<Account[]>([]);
 
-  const [formData, setFormData] = useState({
+  const [newDebt, setNewDebt] = useState({
     name: '',
     remaining: '',
     monthly: '',
@@ -62,20 +98,37 @@ export const FinancialHealth: React.FC = () => {
     isUrgent: false,
     debtType: 'parcelado' as 'fixo' | 'parcelado',
     totalInstallments: '',
-    currentInstallment: ''
+    currentInstallment: '',
+    category: 'Outros' // Added category
   });
 
   useEffect(() => {
-    loadDebts();
-    loadAccounts();
+    loadData();
   }, []);
 
-  const loadAccounts = async () => {
+  const loadData = async () => {
     try {
-      const data = await apiService.getAccounts();
-      setAccounts(data);
+      setLoading(true);
+      const [debtsData, categoriesData, accountsData] = await Promise.all([
+        apiService.getDebts(),
+        apiService.getCategories(),
+        apiService.getAccounts()
+      ]);
+      console.log('Debts loaded:', debtsData); // Debug Log
+      setDebts(Array.isArray(debtsData) ? debtsData : []);
+      setCategories(Array.isArray(categoriesData) ? categoriesData : []);
+      setAccounts(Array.isArray(accountsData) ? accountsData : []);
+      setError(null);
+      // Carregar IA após carregar dívidas
+      loadAIAnalysis();
     } catch (error) {
-      console.error('Erro ao carregar contas:', error);
+      console.error('Erro ao carregar dados:', error);
+      setError('Não foi possível carregar seus dados.');
+      setDebts([]);
+      setCategories([]);
+      setAccounts([]);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -129,11 +182,11 @@ export const FinancialHealth: React.FC = () => {
     e.preventDefault();
     try {
       // Validar inputs
-      const monthlyVal = parseCurrencyInput(formData.monthly);
+      const monthlyVal = parseCurrencyInput(newDebt.monthly);
       let remainingVal = 0;
 
-      if (formData.debtType === 'parcelado') {
-        remainingVal = parseCurrencyInput(formData.remaining);
+      if (newDebt.debtType === 'parcelado') {
+        remainingVal = parseCurrencyInput(newDebt.remaining);
         if (isNaN(remainingVal)) {
           alert('Por favor, insira um valor restante válido.');
           return;
@@ -148,26 +201,28 @@ export const FinancialHealth: React.FC = () => {
       const debtData = editingDebt
         ? {
           id: editingDebt.id,
-          name: formData.name,
+          name: newDebt.name,
           remaining: remainingVal,
           monthly: monthlyVal,
-          dueDate: formData.dueDate,
-          status: formData.status,
-          isUrgent: formData.isUrgent,
-          debtType: formData.debtType,
-          totalInstallments: formData.totalInstallments ? parseInt(formData.totalInstallments) : null,
-          currentInstallment: formData.currentInstallment ? parseInt(formData.currentInstallment) : null
+          dueDate: newDebt.dueDate,
+          status: newDebt.status,
+          isUrgent: newDebt.isUrgent,
+          debtType: newDebt.debtType,
+          totalInstallments: newDebt.totalInstallments ? parseInt(newDebt.totalInstallments) : null,
+          currentInstallment: newDebt.currentInstallment ? parseInt(newDebt.currentInstallment) : null,
+          category: newDebt.category
         }
         : {
-          name: formData.name,
+          name: newDebt.name,
           remaining: remainingVal,
           monthly: monthlyVal,
-          dueDate: formData.dueDate,
-          status: formData.status,
-          isUrgent: formData.isUrgent,
-          debtType: formData.debtType,
-          totalInstallments: formData.totalInstallments ? parseInt(formData.totalInstallments) : null,
-          currentInstallment: formData.currentInstallment ? parseInt(formData.currentInstallment) : null
+          dueDate: newDebt.dueDate,
+          status: newDebt.status,
+          isUrgent: newDebt.isUrgent,
+          debtType: newDebt.debtType,
+          totalInstallments: newDebt.totalInstallments ? parseInt(newDebt.totalInstallments) : null,
+          currentInstallment: newDebt.currentInstallment ? parseInt(newDebt.currentInstallment) : null,
+          category: newDebt.category
         };
 
       if (editingDebt) {
@@ -187,7 +242,7 @@ export const FinancialHealth: React.FC = () => {
   const openModal = (debt?: Debt) => {
     if (debt) {
       setEditingDebt(debt);
-      setFormData({
+      setNewDebt({
         name: debt.name,
         remaining: formatCurrencyInput(debt.remaining.toFixed(2)),
         monthly: formatCurrencyInput(debt.monthly.toFixed(2)),
@@ -196,10 +251,11 @@ export const FinancialHealth: React.FC = () => {
         isUrgent: debt.isUrgent || false,
         debtType: debt.debtType || 'parcelado',
         totalInstallments: debt.totalInstallments?.toString() || '',
-        currentInstallment: debt.currentInstallment?.toString() || ''
+        currentInstallment: debt.currentInstallment?.toString() || '',
+        category: debt.category || 'Outros'
       });
     } else {
-      setFormData({
+      setNewDebt({
         name: '',
         remaining: '',
         monthly: '',
@@ -208,7 +264,8 @@ export const FinancialHealth: React.FC = () => {
         isUrgent: false,
         debtType: 'parcelado',
         totalInstallments: '',
-        currentInstallment: ''
+        currentInstallment: '',
+        category: 'Outros'
       });
     }
     setIsModalOpen(true);
@@ -276,7 +333,7 @@ export const FinancialHealth: React.FC = () => {
 
       setIsPaymentModalOpen(false);
       await loadDebts();
-      await loadAccounts(); // Refresh accounts to show new balance if we were showing it
+      await loadData(); // Refresh accounts to show new balance if we were showing it
       alert('Pagamento registrado com sucesso!');
     } catch (error) {
       console.error('Erro ao registrar pagamento:', error);
@@ -284,10 +341,8 @@ export const FinancialHealth: React.FC = () => {
     }
   };
 
-  // Cálculos Seguros (Imutáveis)
-  const safeDebts = Array.isArray(debts) ? debts : [];
-
-  const totalDebt = safeDebts.reduce((sum, d) => sum + (typeof d.remaining === 'number' ? d.remaining : 0), 0);
+  // Cálculos Seguros (Imutáveis) - safeDebts e totalDebt já foram definidos acima
+  const safeDebts = safeDebtsForCalc;
 
   const pendingPayments = safeDebts
     .filter(d => d.status === 'Pendente')
@@ -380,80 +435,180 @@ export const FinancialHealth: React.FC = () => {
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Evolução (Mock visual) */}
-        <div className="bg-[#15221c] border border-[#1e332a] rounded-xl p-6 flex flex-col justify-between">
+        {/* Evolução (Area Chart) */}
+        <div className="bg-[#15221c] border border-[#1e332a] rounded-xl p-6 flex flex-col justify-between min-h-[300px]">
           <div>
             <p className="text-gray-400 text-sm mb-2">Evolução do Valor</p>
-            <p className="text-3xl font-bold text-white">{formatCurrency(totalDebt)}</p>
+            <p className="text-3xl font-bold text-white mb-4">{formatCurrency(totalDebt)}</p>
           </div>
-          <div className="h-[200px] mt-6 flex items-end gap-2 px-2">
-            {[0.4, 0.6, 0.5, 0.7, 0.5, 0.8, 0.6, 0.9, 0.7, 0.5, 0.6, 0.8].map((h, i) => (
-              <div key={i} className="flex-1 bg-gradient-to-t from-axxy-primary/10 to-axxy-primary/40 rounded-t-sm hover:from-axxy-primary/30 hover:to-axxy-primary/60 transition-all" style={{ height: `${h * 100}%` }}></div>
-            ))}
+          <div className="h-[250px] w-full items-end gap-2 px-2 -ml-4">
+            {/* Fallback to simple fixed size if responsive container is the issue */}
+            <div className="w-full h-full overflow-hidden">
+              <AreaChart width={500} height={250} data={evolutionData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorValor" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e332a" vertical={false} />
+                <XAxis
+                  dataKey="name"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: '#9ca3af', fontSize: 12 }}
+                  dy={10}
+                />
+                <YAxis hide={true} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#15221c', borderColor: '#1e332a', borderRadius: '8px', color: '#fff' }}
+                  itemStyle={{ color: '#22c55e' }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="valor"
+                  stroke="#22c55e"
+                  strokeWidth={3}
+                  fillOpacity={1}
+                  fill="url(#colorValor)"
+                />
+              </AreaChart>
+            </div>
           </div>
         </div>
 
         {/* Composição por Status (Requested) */}
+        {/* Composição por Status (Requested) */}
         <div className="bg-[#15221c] border border-[#1e332a] rounded-xl p-6">
-          <div className="mb-6">
-            <p className="text-gray-400 text-sm mb-2">Situação das Dívidas</p>
-            <p className="text-3xl font-bold text-white">Por Status</p>
+          <div className="flex justify-between items-start mb-6">
+            <div>
+              <p className="text-gray-400 text-sm mb-1">Distribuição das Dívidas</p>
+              <h3 className="text-2xl font-bold text-white">
+                {chartView === 'status' ? 'Por Status' : 'Por Categoria'}
+              </h3>
+            </div>
+            <div className="flex bg-[#0b120f] rounded-lg p-1 border border-gray-700/50">
+              <button
+                onClick={() => setChartView('status')}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${chartView === 'status'
+                  ? 'bg-axxy-primary text-axxy-bg shadow-sm'
+                  : 'text-gray-400 hover:text-gray-200'
+                  }`}
+              >
+                Status
+              </button>
+              <button
+                onClick={() => setChartView('category')}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${chartView === 'category'
+                  ? 'bg-axxy-primary text-axxy-bg shadow-sm'
+                  : 'text-gray-400 hover:text-gray-200'
+                  }`}
+              >
+                Categoria
+              </button>
+            </div>
           </div>
 
-          {(() => {
-            const getDebtValue = (d: Debt) => (d.debtType === 'fixo' || d.remaining === 0) ? d.monthly : d.remaining;
-            const emDiaVal = safeDebts.filter(d => d.status === 'Em dia').reduce((acc, d) => acc + getDebtValue(d), 0);
-            const pendenteVal = safeDebts.filter(d => d.status === 'Pendente').reduce((acc, d) => acc + getDebtValue(d), 0);
-            const atrasadoVal = safeDebts.filter(d => d.status === 'Atrasado').reduce((acc, d) => acc + getDebtValue(d), 0);
+          <div className="h-[200px] w-full">
+            {chartView === 'status' ? (
+              // Status View (Existing Bars)
+              (() => {
+                const getDebtValue = (d: Debt) => (d.debtType === 'fixo' || d.remaining === 0) ? d.monthly : d.remaining;
+                const emDiaVal = safeDebts.filter(d => d.status === 'Em dia').reduce((acc, d) => acc + getDebtValue(d), 0);
+                const pendenteVal = safeDebts.filter(d => d.status === 'Pendente').reduce((acc, d) => acc + getDebtValue(d), 0);
+                const atrasadoVal = safeDebts.filter(d => d.status === 'Atrasado').reduce((acc, d) => acc + getDebtValue(d), 0);
+                const maxBar = Math.max(emDiaVal, pendenteVal, atrasadoVal) || 1;
+                const totalValue = emDiaVal + pendenteVal + atrasadoVal || 1;
 
-            const totalValue = emDiaVal + pendenteVal + atrasadoVal || 1;
-            const maxBar = Math.max(emDiaVal, pendenteVal, atrasadoVal) || 1;
-
-            return (
-              <div className="grid grid-cols-3 gap-4 h-[200px] items-end px-2">
-                {/* Em Dia - Verde */}
-                <div className="flex flex-col items-center gap-3 group h-full justify-end">
-                  <div className="w-full max-w-[80px] bg-green-500/20 group-hover:bg-green-500/30 border border-green-500/30 rounded-t-xl transition-all relative"
-                    style={{ height: `${(emDiaVal / maxBar) * 90}%`, minHeight: '4px' }}>
-                    <div className="absolute -top-8 left-1/2 -translate-x-1/2 text-xs font-bold text-green-400 opacity-0 group-hover:opacity-100 transition-opacity bg-[#112217] px-2 py-1 rounded border border-green-500/30 whitespace-nowrap z-10">
-                      {formatCurrency(emDiaVal)}
+                return (
+                  <div className="grid grid-cols-3 gap-4 h-full items-end px-2">
+                    <div className="flex flex-col items-center gap-3 group h-full justify-end">
+                      <div className="w-full max-w-[60px] bg-green-500/20 group-hover:bg-green-500/30 border border-green-500/30 rounded-t-xl transition-all relative"
+                        style={{ height: `${(emDiaVal / maxBar) * 80}%`, minHeight: '4px' }}></div>
+                      <div className="text-center">
+                        <p className="text-xs font-bold text-green-400">Em dia</p>
+                        <p className="text-[10px] text-gray-400">{formatCurrency(emDiaVal)}</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-center gap-3 group h-full justify-end">
+                      <div className="w-full max-w-[60px] bg-yellow-500/20 group-hover:bg-yellow-500/30 border border-yellow-500/30 rounded-t-xl transition-all relative"
+                        style={{ height: `${(pendenteVal / maxBar) * 80}%`, minHeight: '4px' }}></div>
+                      <div className="text-center">
+                        <p className="text-xs font-bold text-yellow-400">Pendente</p>
+                        <p className="text-[10px] text-gray-400">{formatCurrency(pendenteVal)}</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-center gap-3 group h-full justify-end">
+                      <div className="w-full max-w-[60px] bg-red-500/20 group-hover:bg-red-500/30 border border-red-500/30 rounded-t-xl transition-all relative"
+                        style={{ height: `${(atrasadoVal / maxBar) * 80}%`, minHeight: '4px' }}></div>
+                      <div className="text-center">
+                        <p className="text-xs font-bold text-red-500">Atrasado</p>
+                        <p className="text-[10px] text-gray-400">{formatCurrency(atrasadoVal)}</p>
+                      </div>
                     </div>
                   </div>
-                  <div className="text-center">
-                    <p className="text-xs font-bold text-green-400">Em dia</p>
-                    <p className="text-[10px] text-gray-500">{((emDiaVal / totalValue) * 100).toFixed(0)}%</p>
-                  </div>
-                </div>
+                );
+              })()
+            ) : (
+              // Category View (Pie Chart)
+              (() => {
+                const categoryData = safeDebts.reduce((acc, debt) => {
+                  const cat = debt.category || 'Outros';
+                  const value = (debt.debtType === 'fixo' || debt.remaining === 0) ? debt.monthly : debt.remaining;
+                  acc[cat] = (acc[cat] || 0) + value;
+                  return acc;
+                }, {} as Record<string, number>);
 
-                {/* Pendente - Amarelo */}
-                <div className="flex flex-col items-center gap-3 group h-full justify-end">
-                  <div className="w-full max-w-[80px] bg-yellow-500/20 group-hover:bg-yellow-500/30 border border-yellow-500/30 rounded-t-xl transition-all relative"
-                    style={{ height: `${(pendenteVal / maxBar) * 90}%`, minHeight: '4px' }}>
-                    <div className="absolute -top-8 left-1/2 -translate-x-1/2 text-xs font-bold text-yellow-400 opacity-0 group-hover:opacity-100 transition-opacity bg-[#112217] px-2 py-1 rounded border border-yellow-500/30 whitespace-nowrap z-10">
-                      {formatCurrency(pendenteVal)}
+                const data = Object.entries(categoryData)
+                  .map(([name, value]) => ({ name, value }))
+                  .sort((a, b) => b.value - a.value);
+
+                const COLORS = ['#22c55e', '#eab308', '#ef4444', '#3b82f6', '#a855f7', '#ec4899'];
+
+                if (data.length === 0) return <div className="flex items-center justify-center h-full text-gray-500 text-sm">Sem dados</div>;
+
+                return (
+                  <div className="flex items-center h-full">
+                    <div className="flex-1 h-full min-w-[200px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={data}
+                            innerRadius={45} // Increased slightly
+                            outerRadius={70} // Reduced slightly from 75/80 often used
+                            paddingAngle={5}
+                            dataKey="value"
+                            stroke="none"
+                          >
+                            {data.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <RechartsTooltip
+                            formatter={(value: number) => formatCurrency(value)}
+                            contentStyle={{ backgroundColor: '#0b120f', border: '1px solid #1e332a', borderRadius: '8px', fontSize: '12px' }}
+                            itemStyle={{ color: '#fff' }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="w-28 flex flex-col justify-center gap-1 overflow-y-auto max-h-[180px] pl-2">
+                      {/* Increased width to 28, added pl-2 */}
+                      {data.map((entry, index) => (
+                        <div key={index} className="flex items-center gap-1.5">
+                          <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
+                          <div className="flex flex-col min-w-0">
+                            <span className="text-[10px] text-white truncate font-medium">{entry.name}</span>
+                            <span className="text-[9px] text-gray-500">{formatCurrency(entry.value)}</span>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                  <div className="text-center">
-                    <p className="text-xs font-bold text-yellow-400">Pendente</p>
-                    <p className="text-[10px] text-gray-500">{((pendenteVal / totalValue) * 100).toFixed(0)}%</p>
-                  </div>
-                </div>
-
-                {/* Atrasado - Vermelho */}
-                <div className="flex flex-col items-center gap-3 group h-full justify-end">
-                  <div className="w-full max-w-[80px] bg-red-500/20 group-hover:bg-red-500/30 border border-red-500/30 rounded-t-xl transition-all relative"
-                    style={{ height: `${(atrasadoVal / maxBar) * 90}%`, minHeight: '4px' }}>
-                    <div className="absolute -top-8 left-1/2 -translate-x-1/2 text-xs font-bold text-red-500 opacity-0 group-hover:opacity-100 transition-opacity bg-[#112217] px-2 py-1 rounded border border-red-500/30 whitespace-nowrap z-10">
-                      {formatCurrency(atrasadoVal)}
-                    </div>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-xs font-bold text-red-500">Atrasado</p>
-                    <p className="text-[10px] text-gray-500">{((atrasadoVal / totalValue) * 100).toFixed(0)}%</p>
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
+                );
+              })()
+            )}
+          </div>
         </div>
       </div>
 
@@ -785,126 +940,119 @@ export const FinancialHealth: React.FC = () => {
                     <label className="block text-sm font-medium text-gray-300 mb-2">Nome da Dívida</label>
                     <input
                       type="text"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      value={newDebt.name}
+                      onChange={(e) => setNewDebt({ ...newDebt, name: e.target.value })}
                       placeholder="Ex: Financiamento Veículo"
                       className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 px-4 focus:ring-1 focus:ring-axxy-primary outline-none transition-colors"
                       required
                     />
                   </div>
 
-                  <div className={`grid ${formData.debtType === 'fixo' ? 'grid-cols-1' : 'grid-cols-2'} gap-4`}>
-                    {formData.debtType === 'parcelado' && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">Valor Restante</label>
-                        <div className="relative">
-                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">R$</span>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-gray-400 mb-1">Tipo de Dívida</label>
+                      <select
+                        value={newDebt.debtType}
+                        onChange={(e) => setNewDebt({ ...newDebt, debtType: e.target.value as any })}
+                        className="w-full bg-[#1c2b24] border border-gray-600 rounded-xl py-2 px-4 text-white focus:outline-none focus:border-axxy-primary"
+                      >
+                        <option value="parcelado">Parcelado</option>
+                        <option value="fixo">Fixo</option>
+                      </select>
+                    </div>
+
+                    {newDebt.debtType === 'parcelado' && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-gray-400 mb-1">Atual</label>
                           <input
-                            type="text"
-                            value={formData.remaining}
-                            onChange={(e) => setFormData({ ...formData, remaining: formatCurrencyInput(e.target.value) })}
-                            placeholder="0,00"
-                            className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 pl-10 pr-4 focus:ring-1 focus:ring-axxy-primary outline-none transition-colors"
-                            required={formData.debtType === 'parcelado'}
+                            type="number"
+                            min="1"
+                            value={newDebt.currentInstallment}
+                            onChange={(e) => setNewDebt({ ...newDebt, currentInstallment: e.target.value })}
+                            className="w-full bg-[#1c2b24] border border-gray-600 rounded-xl py-2 px-4 text-white focus:outline-none focus:border-axxy-primary"
+                            placeholder="1"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-gray-400 mb-1">Total</label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={newDebt.totalInstallments}
+                            onChange={(e) => setNewDebt({ ...newDebt, totalInstallments: e.target.value })}
+                            className="w-full bg-[#1c2b24] border border-gray-600 rounded-xl py-2 px-4 text-white focus:outline-none focus:border-axxy-primary"
+                            placeholder="12"
                           />
                         </div>
                       </div>
                     )}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        {formData.debtType === 'fixo' ? 'Valor Mensal' : 'Parcela Mensal'}
-                      </label>
-                      <div className="relative">
-                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">R$</span>
-                        <input
-                          type="text"
-                          value={formData.monthly}
-                          onChange={(e) => setFormData({ ...formData, monthly: formatCurrencyInput(e.target.value) })}
-                          placeholder="0,00"
-                          className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 pl-10 pr-4 focus:ring-1 focus:ring-axxy-primary outline-none transition-colors"
-                          required
-                        />
-                      </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-gray-400 mb-1">Categoria *</label>
+                    <div className="relative">
+                      <Tag className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 w-5 h-5" />
+                      <select
+                        value={newDebt.category || 'Outros'}
+                        onChange={(e) => setNewDebt({ ...newDebt, category: e.target.value })}
+                        className="w-full bg-[#1c2b24] border border-gray-600 rounded-xl py-2 pl-10 pr-4 text-white focus:outline-none focus:border-axxy-primary appearance-none"
+                      >
+                        <option value="Outros">Outros</option>
+                        {categories.map(cat => (
+                          <option key={cat.id} value={cat.name}>{cat.name}</option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 w-4 h-4 pointer-events-none" />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Data de Vencimento</label>
+                    <label className="block text-gray-400 mb-1">Data de Vencimento *</label>
                     <input
                       type="date"
-                      value={formData.dueDate}
-                      onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
-                      className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 px-4 focus:ring-1 focus:ring-axxy-primary outline-none [color-scheme:dark] transition-colors"
+                      value={newDebt.dueDate}
+                      onChange={(e) => setNewDebt({ ...newDebt, dueDate: e.target.value })}
+                      className="w-full bg-[#1c2b24] border border-gray-600 rounded-xl py-2 px-4 text-white focus:outline-none focus:border-axxy-primary [color-scheme:dark]"
                       required
                     />
                   </div>
 
-                  {/* Tipo de Dívida */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Tipo de Dívida</label>
-                    <div className="grid grid-cols-2 gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setFormData({ ...formData, debtType: 'fixo', totalInstallments: '', currentInstallment: '' })}
-                        className={`py-3 px-4 rounded-xl font-medium transition-all flex items-center justify-center gap-2 ${formData.debtType === 'fixo'
-                          ? 'bg-axxy-primary text-axxy-bg'
-                          : 'bg-[#0b120f] border border-gray-700 text-gray-400 hover:border-axxy-primary hover:text-white'
-                          }`}
-                      >
-                        🔄 Fixo
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setFormData({ ...formData, debtType: 'parcelado' })}
-                        className={`py-3 px-4 rounded-xl font-medium transition-all flex items-center justify-center gap-2 ${formData.debtType === 'parcelado'
-                          ? 'bg-axxy-primary text-axxy-bg'
-                          : 'bg-[#0b120f] border border-gray-700 text-gray-400 hover:border-axxy-primary hover:text-white'
-                          }`}
-                      >
-                        📊 Parcelado
-                      </button>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-gray-400 mb-1">Valor Restante *</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">R$</span>
+                        <input
+                          type="text"
+                          value={newDebt.remaining}
+                          onChange={(e) => setNewDebt({ ...newDebt, remaining: formatCurrencyInput(e.target.value) })}
+                          className="w-full bg-[#1c2b24] border border-gray-600 rounded-xl py-2 pl-10 pr-4 text-white focus:outline-none focus:border-axxy-primary"
+                          placeholder="0,00"
+                        />
+                      </div>
                     </div>
-                    <p className="text-xs text-gray-500 mt-2">
-                      {formData.debtType === 'fixo'
-                        ? 'Gastos recorrentes como aluguel, internet, streaming...'
-                        : 'Dívidas com prazo definido como financiamentos, cartão...'}
-                    </p>
+                    <div>
+                      <label className="block text-gray-400 mb-1">Parcela Mensal *</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">R$</span>
+                        <input
+                          type="text"
+                          value={newDebt.monthly}
+                          onChange={(e) => setNewDebt({ ...newDebt, monthly: formatCurrencyInput(e.target.value) })}
+                          className="w-full bg-[#1c2b24] border border-gray-600 rounded-xl py-2 pl-10 pr-4 text-white focus:outline-none focus:border-axxy-primary"
+                          placeholder="0,00"
+                        />
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Campos de Parcelas - Só aparecem se for parcelado */}
-                  {formData.debtType === 'parcelado' && (
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">Parcela Atual</label>
-                        <input
-                          type="number"
-                          min="1"
-                          value={formData.currentInstallment}
-                          onChange={(e) => setFormData({ ...formData, currentInstallment: e.target.value })}
-                          placeholder="Ex: 3"
-                          className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 px-4 focus:ring-1 focus:ring-axxy-primary outline-none transition-colors"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">Total de Parcelas</label>
-                        <input
-                          type="number"
-                          min="1"
-                          value={formData.totalInstallments}
-                          onChange={(e) => setFormData({ ...formData, totalInstallments: e.target.value })}
-                          placeholder="Ex: 12"
-                          className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 px-4 focus:ring-1 focus:ring-axxy-primary outline-none transition-colors"
-                        />
-                      </div>
-                    </div>
-                  )}
-
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Status</label>
+                    <label className="block text-gray-400 mb-1">Status</label>
                     <select
-                      value={formData.status}
-                      onChange={(e) => setFormData({ ...formData, status: e.target.value as DebtStatus })}
-                      className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 px-4 focus:ring-1 focus:ring-axxy-primary outline-none transition-colors"
+                      value={newDebt.status}
+                      onChange={(e) => setNewDebt({ ...newDebt, status: e.target.value as any })}
+                      className="w-full bg-[#1c2b24] border border-gray-600 rounded-xl py-2 px-4 text-white focus:outline-none focus:border-axxy-primary"
                     >
                       <option value="Em dia">Em dia</option>
                       <option value="Pendente">Pendente</option>
@@ -930,7 +1078,7 @@ export const FinancialHealth: React.FC = () => {
                 </form>
               </div>
             </div>
-          </div>
+          </div >
         )
       }
     </div >

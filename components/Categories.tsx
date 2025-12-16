@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { Category } from '../types';
+import { Category, CreateCategoryDTO } from '../types';
 import { apiService } from '../services/apiService';
 
 export const Categories: React.FC = () => {
@@ -54,16 +54,20 @@ export const Categories: React.FC = () => {
     }
 
     try {
-      const categoryData: Category = {
-        id: editingCategory?.id || '',
-        name: formData.name,
-        type: formData.type,
-        color: formData.color
-      };
-
       if (editingCategory) {
+        const categoryData: Category = {
+          id: editingCategory.id,
+          name: formData.name,
+          type: formData.type,
+          color: formData.color
+        };
         await apiService.updateCategory(editingCategory.id, categoryData);
       } else {
+        const categoryData: CreateCategoryDTO = {
+          name: formData.name,
+          type: formData.type,
+          color: formData.color
+        };
         await apiService.createCategory(categoryData);
       }
 

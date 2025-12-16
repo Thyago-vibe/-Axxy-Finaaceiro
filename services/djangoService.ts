@@ -1,5 +1,5 @@
 
-import { Transaction, Goal, UserProfile, Budget, Account, Category, Debt, Alert, LeakageAnalysis, ReportData, InterconnectedSummaryData, PredictionBaseData } from '../types';
+import { Transaction, Goal, UserProfile, Budget, Account, Category, Debt, Alert, LeakageAnalysis, ReportData, PredictionBaseData } from '../types';
 
 const API_URL = 'http://localhost:8000/api';
 
@@ -50,8 +50,8 @@ export const djangoService = {
     return res.json();
   },
   updateGoal: async (g: Goal): Promise<Goal> => {
-     const res = await fetch(`${API_URL}/goals/${g.id}/`, { method: 'PUT', headers, body: JSON.stringify(g) });
-     return res.json();
+    const res = await fetch(`${API_URL}/goals/${g.id}/`, { method: 'PUT', headers, body: JSON.stringify(g) });
+    return res.json();
   },
   deleteGoal: async (id: string): Promise<boolean> => {
     const res = await fetch(`${API_URL}/goals/${id}/`, { method: 'DELETE' });
@@ -91,8 +91,8 @@ export const djangoService = {
     return res.json();
   },
   createCategory: async (c: Category): Promise<Category> => {
-     const res = await fetch(`${API_URL}/categories/`, { method: 'POST', headers, body: JSON.stringify(c) });
-     return res.json();
+    const res = await fetch(`${API_URL}/categories/`, { method: 'POST', headers, body: JSON.stringify(c) });
+    return res.json();
   },
 
   // --- Financial Health (Debts) ---
@@ -105,16 +105,16 @@ export const djangoService = {
     const res = await fetch(`${API_URL}/debts/`, { method: 'POST', headers, body: JSON.stringify(d) });
     return res.json();
   },
-  
+
   // --- Alerts ---
   getAlerts: async (): Promise<Alert[]> => {
-     const res = await fetch(`${API_URL}/alerts/`);
-     if (!res.ok) return [];
-     return res.json();
+    const res = await fetch(`${API_URL}/alerts/`);
+    if (!res.ok) return [];
+    return res.json();
   },
   updateAlert: async (a: Alert): Promise<Alert> => {
-     const res = await fetch(`${API_URL}/alerts/${a.id}/`, { method: 'PUT', headers, body: JSON.stringify(a) });
-     return res.json();
+    const res = await fetch(`${API_URL}/alerts/${a.id}/`, { method: 'PUT', headers, body: JSON.stringify(a) });
+    return res.json();
   },
 
   // --- AI Leakage Analysis ---
@@ -133,12 +133,7 @@ export const djangoService = {
     return res.json();
   },
 
-  // --- Interconnected Summary ---
-  getInterconnectedSummary: async (): Promise<InterconnectedSummaryData> => {
-    const res = await fetch(`${API_URL}/interconnected-summary/`);
-    if (!res.ok) throw new Error('Failed to fetch summary');
-    return res.json();
-  },
+
 
   // --- Predictive Analysis ---
   getPredictiveAnalysis: async (): Promise<PredictionBaseData> => {

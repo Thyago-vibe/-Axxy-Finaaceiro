@@ -14,3 +14,4 @@ class Debt(SQLModel, table=True):
     debtType: str = "parcelado"  # 'fixo' | 'parcelado'
     totalInstallments: Optional[int] = None  # Total de parcelas (para parcelado)
     currentInstallment: Optional[int] = None  # Parcela atual (para parcelado)
+    category: Optional[str] = Field(default="Outros") # Categoria da dívida

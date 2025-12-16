@@ -198,20 +198,7 @@ def get_income_sources(range: str = "this-month", session: Session = Depends(get
     return result
 
 
-@router.get("/interconnected-summary/")
-def get_interconnected_summary(session: Session = Depends(get_session)):
-    """Retorna sumário com metas e dívidas."""
-    goals = session.exec(select(Goal)).all()
-    debts = session.exec(select(Debt)).all()
-    
-    return {
-        "activeGoals": goals[:5],
-        "upcomingDebts": [d for d in debts if d.status != "Atrasado"][:5],
-        "insights": {
-            "bestDecisions": ["Continue controlando seus gastos!"],
-            "suggestedCuts": []
-        }
-    }
+
 
 
 @router.get("/predictive-analysis/")

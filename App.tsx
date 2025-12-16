@@ -13,7 +13,7 @@ import { Settings } from './components/Settings';
 import { BehavioralAlerts } from './components/BehavioralAlerts';
 import { FinancialHealth } from './components/FinancialHealth';
 import { AISettings } from './components/AISettings';
-import { InterconnectedSummary } from './components/InterconnectedSummary';
+
 import { PredictiveAnalysis } from './components/PredictiveAnalysis';
 import { NetWorth } from './components/NetWorth';
 import { PaycheckAllocation } from './components/PaycheckAllocation';
@@ -29,6 +29,7 @@ const App: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [pendingAllocation, setPendingAllocation] = useState<{ amount: number; date: string } | null>(null);
 
   // Initial Data Load from Backend
   useEffect(() => {
@@ -109,8 +110,7 @@ const App: React.FC = () => {
     switch (currentView) {
       case 'dashboard':
         return <Dashboard transactions={transactions} accounts={accounts} />;
-      case 'interconnected-summary':
-        return <InterconnectedSummary setView={setCurrentView} />;
+
       case 'transactions':
         return <Transactions
           transactions={transactions}
@@ -118,6 +118,10 @@ const App: React.FC = () => {
           onAddTransaction={handleAddTransaction}
           onUpdateTransaction={handleUpdateTransaction}
           onDeleteTransaction={handleDeleteTransaction}
+          onNavigateToAllocation={(amount, date) => {
+            setPendingAllocation({ amount, date });
+            setCurrentView('allocation');
+          }}
         />;
       case 'budgets':
         return <Budgets />;
@@ -134,7 +138,11 @@ const App: React.FC = () => {
       case 'predictive-analysis':
         return <PredictiveAnalysis />;
       case 'allocation':
-        return <PaycheckAllocation />;
+        return <PaycheckAllocation
+          initialAmount={pendingAllocation?.amount}
+          initialDate={pendingAllocation?.date}
+          onClearPending={() => setPendingAllocation(null)}
+        />;
       case 'net-worth':
         return <NetWorth />;
       case 'reports':
@@ -146,7 +154,7 @@ const App: React.FC = () => {
       case 'ai-settings':
         return <AISettings />;
       default:
-        return <Dashboard transactions={transactions} />;
+        return <Dashboard transactions={transactions} accounts={accounts} />;
     }
   };
 

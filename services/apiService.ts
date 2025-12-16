@@ -1,5 +1,5 @@
 
-import { Transaction, Goal, UserProfile, Budget, BudgetItem, Account, Category, Debt, Alert, LeakageAnalysis, ReportData, InterconnectedSummaryData, PredictionBaseData, NetWorthDashboardData, Asset, Liability, CreateCategoryDTO } from '../types';
+import { Transaction, Goal, UserProfile, Budget, BudgetItem, Account, Category, Debt, Alert, LeakageAnalysis, ReportData, PredictionBaseData, NetWorthDashboardData, Asset, Liability, CreateCategoryDTO } from '../types';
 
 const API_URL = 'http://localhost:8000/api';
 
@@ -282,11 +282,7 @@ export const apiService = {
     return handleApiResponse(res);
   },
 
-  // --- Interconnected Summary ---
-  getInterconnectedSummary: async (): Promise<InterconnectedSummaryData> => {
-    const res = await fetch(`${API_URL}/interconnected-summary/`);
-    return handleApiResponse(res);
-  },
+
 
   // --- Predictive Analysis ---
   getPredictiveAnalysis: async (): Promise<PredictionBaseData> => {
@@ -415,5 +411,14 @@ export const apiService = {
   getAllocationHistory: async (): Promise<any[]> => {
     const res = await fetch(`${API_URL}/allocation/history`);
     return handleApiResponse(res, []);
+  },
+
+  // --- Factory Reset ---
+  factoryReset: async (): Promise<{ success: boolean; message: string; deleted?: Record<string, number> }> => {
+    const res = await fetch(`${API_URL}/system/reset`, {
+      method: 'POST',
+      headers
+    });
+    return handleApiResponse(res);
   }
 };

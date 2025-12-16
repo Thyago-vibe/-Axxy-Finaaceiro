@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { Upload, Trash2, Puzzle, ChevronDown, Camera, Sun, Moon } from 'lucide-react';
+import { Upload, Trash2, Puzzle, ChevronDown, Camera, Sun, Moon, AlertTriangle } from 'lucide-react';
 import { UserProfile } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
 import { BackupRestore } from './BackupRestore';
+import { apiService } from '../services/apiService';
 
 interface SettingsProps {
     userProfile: UserProfile;
@@ -23,6 +24,34 @@ export const Settings: React.FC<SettingsProps> = ({ userProfile, onUpdateProfile
     const [email, setEmail] = useState(userProfile.email);
     const [avatar, setAvatar] = useState(userProfile.avatar);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // State for Factory Reset
+    const [showResetModal, setShowResetModal] = useState(false);
+    const [resetConfirmText, setResetConfirmText] = useState('');
+    const [isResetting, setIsResetting] = useState(false);
+    const [resetError, setResetError] = useState<string | null>(null);
+
+    const handleFactoryReset = async () => {
+        if (resetConfirmText !== 'APAGAR TUDO') return;
+
+        setIsResetting(true);
+        setResetError(null);
+
+        try {
+            const result = await apiService.factoryReset();
+            if (result.success) {
+                // Recarregar a página para limpar todos os estados
+                window.location.reload();
+            } else {
+                setResetError('Erro ao resetar o sistema');
+            }
+        } catch (error) {
+            setResetError('Erro ao conectar com o servidor');
+            console.error('Factory reset error:', error);
+        } finally {
+            setIsResetting(false);
+        }
+    };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -248,6 +277,117 @@ export const Settings: React.FC<SettingsProps> = ({ userProfile, onUpdateProfile
                     <p className="text-gray-500 text-sm">Nenhuma integração disponível no momento. Volte em breve!</p>
                 </div>
             </section>
+
+            {/* Zona de Perigo */}
+            <section>
+                <h3 className="text-xl font-bold text-red-500 mb-6 flex items-center gap-2">
+                    <AlertTriangle size={24} />
+                    Zona de Perigo
+                </h3>
+                <div className="bg-red-950/30 border border-red-900/50 rounded-3xl p-8">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+                        <div>
+                            <h4 className="text-white font-medium mb-2">Restaurar Configurações de Fábrica</h4>
+                            <p className="text-sm text-gray-400">
+                                Apaga <strong className="text-red-400">TODOS</strong> os dados do sistema: transações, contas, orçamentos, metas, dívidas e configurações.
+                                <br />
+                                <span className="text-red-400 font-medium">Esta ação é irreversível!</span>
+                            </p>
+                        </div>
+                        <button
+                            onClick={() => setShowResetModal(true)}
+                            className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition-colors flex items-center gap-2 shrink-0"
+                        >
+                            <Trash2 size={18} />
+                            Apagar Tudo
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            {/* Modal de Confirmação de Reset */}
+            {showResetModal && (
+                <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                    <div className="bg-[#15221c] border border-red-900/50 rounded-3xl p-8 max-w-md w-full animate-fade-in">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="w-12 h-12 bg-red-600/20 rounded-full flex items-center justify-center">
+                                <AlertTriangle size={24} className="text-red-500" />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-bold text-white">Confirmar Reset</h3>
+                                <p className="text-sm text-gray-400">Esta ação não pode ser desfeita</p>
+                            </div>
+                        </div>
+
+                        <div className="bg-red-950/50 border border-red-900/50 rounded-xl p-4 mb-6">
+                            <p className="text-red-300 text-sm">
+                                ⚠️ Você está prestes a apagar permanentemente:
+                            </p>
+                            <ul className="mt-3 space-y-1 text-sm text-gray-300">
+                                <li>• Todas as transações</li>
+                                <li>• Todas as contas bancárias</li>
+                                <li>• Todos os orçamentos e metas</li>
+                                <li>• Todas as dívidas</li>
+                                <li>• Todas as categorias personalizadas</li>
+                                <li>• Configurações de IA</li>
+                                <li>• Dados de patrimônio</li>
+                            </ul>
+                        </div>
+
+                        <div className="mb-6">
+                            <label className="block text-sm font-medium text-gray-300 mb-2">
+                                Digite <span className="text-red-400 font-bold">APAGAR TUDO</span> para confirmar:
+                            </label>
+                            <input
+                                type="text"
+                                value={resetConfirmText}
+                                onChange={(e) => setResetConfirmText(e.target.value)}
+                                placeholder="APAGAR TUDO"
+                                className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl py-3 px-4 focus:ring-1 focus:ring-red-500 outline-none transition-all placeholder-gray-600"
+                            />
+                        </div>
+
+                        {resetError && (
+                            <div className="mb-4 p-3 bg-red-900/30 border border-red-700 rounded-xl text-red-300 text-sm">
+                                {resetError}
+                            </div>
+                        )}
+
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => {
+                                    setShowResetModal(false);
+                                    setResetConfirmText('');
+                                    setResetError(null);
+                                }}
+                                className="flex-1 px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-xl transition-colors"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={handleFactoryReset}
+                                disabled={resetConfirmText !== 'APAGAR TUDO' || isResetting}
+                                className={`flex-1 px-6 py-3 font-bold rounded-xl transition-colors flex items-center justify-center gap-2 ${resetConfirmText === 'APAGAR TUDO' && !isResetting
+                                        ? 'bg-red-600 hover:bg-red-700 text-white'
+                                        : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                                    }`}
+                            >
+                                {isResetting ? (
+                                    <>
+                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                        Apagando...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Trash2 size={18} />
+                                        Confirmar Reset
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

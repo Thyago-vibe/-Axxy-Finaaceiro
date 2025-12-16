@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Minus, Calendar, ChevronDown, Trash2, X, Sparkles, TrendingUp, Zap, DollarSign } from 'lucide-react';
+import { Plus, Minus, Calendar, ChevronDown, Trash2, X, Sparkles, TrendingUp, Zap, DollarSign, PieChart, ArrowRight } from 'lucide-react';
 import { Transaction, Account, Budget } from '../types';
 import { formatCurrency, formatCurrencyInput, parseCurrencyInput } from '../utils/formatters';
 import { apiService } from '../services/apiService';
@@ -12,9 +12,10 @@ interface TransactionsProps {
   onAddTransaction: (t: Omit<Transaction, 'id'>) => void;
   onUpdateTransaction: (id: string, t: Omit<Transaction, 'id'>) => void;
   onDeleteTransaction: (id: string) => void;
+  onNavigateToAllocation?: (amount: number, date: string) => void;
 }
 
-export const Transactions: React.FC<TransactionsProps> = ({ transactions, accounts, onAddTransaction, onUpdateTransaction, onDeleteTransaction }) => {
+export const Transactions: React.FC<TransactionsProps> = ({ transactions, accounts, onAddTransaction, onUpdateTransaction, onDeleteTransaction, onNavigateToAllocation }) => {
   console.log('Transactions.tsx: Received transactions prop:', transactions);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDailyModalOpen, setIsDailyModalOpen] = useState(false);
@@ -27,6 +28,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ transactions, accoun
   const [category, setCategory] = useState('');
   const [accountId, setAccountId] = useState('');
   const [date, setDate] = useState('');
+  const [useForAllocation, setUseForAllocation] = useState(false);
 
   // Daily (Diária) State
   const [dailyAmount, setDailyAmount] = useState('200,00'); // Default R$ 200
@@ -79,12 +81,15 @@ export const Transactions: React.FC<TransactionsProps> = ({ transactions, accoun
     e.preventDefault();
     if (!amount || !description) return;
 
+    const parsedAmount = parseCurrencyInput(amount);
+    const transactionDate = date || new Date().toISOString().split('T')[0];
+
     const transactionData: Omit<Transaction, 'id'> = {
       accountId: accountId || undefined,
       description,
-      amount: parseCurrencyInput(amount),
+      amount: parsedAmount,
       type,
-      date: date || new Date().toISOString().split('T')[0],
+      date: transactionDate,
       category: category || 'Outros',
       status: 'completed'
     };
@@ -107,6 +112,12 @@ export const Transactions: React.FC<TransactionsProps> = ({ transactions, accoun
     setAccountId('');
     setSuggestedCategory('');
     setConfidence(0);
+
+    // Navigate to allocation if toggle is on and it's an income
+    if (useForAllocation && type === 'income' && onNavigateToAllocation) {
+      setUseForAllocation(false);
+      onNavigateToAllocation(parsedAmount, transactionDate);
+    }
   };
 
   const handleAcceptSuggestion = () => {
@@ -513,6 +524,48 @@ export const Transactions: React.FC<TransactionsProps> = ({ transactions, accoun
                     </div>
                   )}
                 </div>
+
+                {/* Allocation Quick Action - Only for income */}
+                {type === 'income' && amount && parseCurrencyInput(amount) > 0 && !editingTransaction && (
+                  <div
+                    onClick={() => setUseForAllocation(!useForAllocation)}
+                    className={`cursor-pointer rounded-2xl p-4 transition-all border ${useForAllocation
+                        ? 'bg-gradient-to-r from-blue-500/20 to-purple-500/20 border-blue-500/50'
+                        : 'bg-[#0b120f] border-gray-700 hover:border-gray-600'
+                      }`}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${useForAllocation ? 'bg-blue-500/30' : 'bg-gray-700/50'
+                        }`}>
+                        <PieChart size={24} className={useForAllocation ? 'text-blue-400' : 'text-gray-500'} />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className={`font-semibold ${useForAllocation ? 'text-white' : 'text-gray-300'}`}>
+                            Usar para Alocação Quinzenal
+                          </h4>
+                          {useForAllocation && (
+                            <span className="text-xs bg-blue-500/30 text-blue-300 px-2 py-0.5 rounded-full flex items-center gap-1">
+                              <ArrowRight size={12} />
+                              Ativado
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {useForAllocation
+                            ? `Após salvar, você será direcionado para alocar ${formatCurrency(parseCurrencyInput(amount))}`
+                            : 'Alocar este valor entre dívidas, metas e orçamentos'
+                          }
+                        </p>
+                      </div>
+                      <div className={`w-12 h-6 rounded-full relative transition-colors ${useForAllocation ? 'bg-blue-500' : 'bg-gray-600'
+                        }`}>
+                        <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all shadow-sm ${useForAllocation ? 'left-7' : 'left-1'
+                          }`}></div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="pt-4 flex gap-4">
                   <button

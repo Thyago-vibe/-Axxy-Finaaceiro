@@ -148,17 +148,7 @@ export interface ReportData {
   distribution: ReportCategoryData[];
 }
 
-export interface InterconnectedSummaryData {
-  activeGoals: Goal[];
-  upcomingDebts: Debt[];
-  insights: {
-    bestDecisions: string[];
-    suggestedCuts: {
-      text: string;
-      value: number;
-    }[];
-  };
-}
+
 
 export interface PredictionScenario {
   id: number;

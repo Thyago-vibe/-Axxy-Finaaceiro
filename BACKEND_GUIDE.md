@@ -500,28 +500,7 @@ def get_leakage_analysis():
         ]
     }
 
-@app.get("/api/interconnected-summary/")
-def get_interconnected_summary(session: Session = Depends(get_session)):
-    """Agrega Metas, Dívidas e Insights em uma única chamada."""
-    goals = session.exec(select(Goal)).all()
-    debts = session.exec(select(Debt)).all()
-    
-    # Mock insights based on logical rules
-    insights = {
-        "bestDecisions": [
-            "Você economizou R$ 85 em restaurantes este mês.",
-            "Sua meta de emergência está quase completa."
-        ],
-        "suggestedCuts": [
-            {"text": "Considere reduzir gastos com assinaturas.", "value": 120}
-        ]
-    }
-    
-    return {
-        "activeGoals": goals[:2], # Retorna apenas as 2 primeiras
-        "upcomingDebts": [d for d in debts if d.isUrgent][:2],
-        "insights": insights
-    }
+
 
 @app.get("/api/predictive-analysis/")
 def get_predictive_analysis(session: Session = Depends(get_session)):
@@ -580,7 +559,7 @@ Você verá uma interface gráfica interativa (Swagger UI) onde pode ver e testa
 | **GET** | `/api/reports/` | Retorna KPIs e dados para gráficos, calculados a partir das transações. |
 | **GET** | `/api/leakage-analysis/` | Retorna sugestões de economia (IA Mockada). |
 | **GET** | `/api/predictive-analysis/` | Retorna dados para o gráfico de projeção futura. |
-| **GET** | `/api/interconnected-summary/` | Retorna metas ativas e dívidas urgentes em um único JSON. |
+
 | **GET** | `/api/net-worth/` | Retorna o dashboard completo de Patrimônio Líquido. |
 
 Este backend está 100% pronto para se comunicar com o Frontend Axxy Finance.

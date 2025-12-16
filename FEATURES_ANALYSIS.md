@@ -310,27 +310,7 @@ O **Axxy Finance** é um sistema completo de gestão financeira pessoal com recu
 
 ---
 
-## 📈 12. Resumo Interconectado (InterconnectedSummary.tsx)
 
-### ✅ Funcionalidades Implementadas:
-- **Visão Unificada**
-  - Metas ativas (top 2)
-  - Dívidas urgentes (top 2)
-  - Insights de IA
-  - Sugestões de cortes
-
-- **Navegação Contextual**
-  - Links para visualizações detalhadas
-  - Call-to-actions para ações específicas
-
-### 🔧 Status Técnico:
-- ✅ Integrado com backend (`/api/interconnected-summary/`)
-- ⚠️ Insights mockados
-
-### ⚠️ O que falta:
-- ❌ IA real gerando insights
-- ❌ Priorização dinâmica baseada em urgência
-- ❌ Métricas de saúde financeira
 
 ---
 
@@ -436,7 +416,7 @@ O **Axxy Finance** é um sistema completo de gestão financeira pessoal com recu
 | `/api/reports/` | GET | ✅ | Relatórios |
 | `/api/leakage-analysis/` | GET | ⚠️ | Análise de vazamento (mock) |
 | `/api/predictive-analysis/` | GET | ⚠️ | Análise preditiva (mock) |
-| `/api/interconnected-summary/` | GET | ⚠️ | Resumo (insights mock) |
+
 
 ### 🔧 Tecnologias Backend:
 - ✅ FastAPI

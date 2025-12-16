@@ -575,6 +575,65 @@ def import_backup(backup_data: dict, session: Session = Depends(get_session)):
         raise HTTPException(status_code=500, detail=f"Erro ao importar backup: {str(e)}")
 
 
+# --- RESET DO SISTEMA (FACTORY RESET) ---
+
+@app.post("/api/system/reset")
+def factory_reset(session: Session = Depends(get_session)):
+    """
+    Restaura o sistema para as configurações de fábrica.
+    ATENÇÃO: Esta ação é IRREVERSÍVEL e apaga TODOS os dados!
+    """
+    try:
+        # Deletar dados de todas as tabelas (em ordem para respeitar foreign keys)
+        tables_to_clear = [
+            AllocationItem,
+            PaycheckAllocation,
+            BudgetItem,
+            Transaction,
+            Budget,
+            Goal,
+            Debt,
+            Category,
+            Alert,
+            Asset,
+            Liability,
+            Account,
+            NetWorthGoal,
+            AISettings,
+            UserProfile,
+        ]
+        
+        deleted_counts = {}
+        
+        for table in tables_to_clear:
+            records = session.exec(select(table)).all()
+            count = len(records)
+            for record in records:
+                session.delete(record)
+            deleted_counts[table.__name__] = count
+        
+        session.commit()
+        
+        # Criar perfil padrão
+        default_profile = UserProfile(
+            name="Usuário Axxy",
+            email="usuario@email.com",
+            avatar=""
+        )
+        session.add(default_profile)
+        session.commit()
+        
+        return {
+            "success": True,
+            "message": "Sistema restaurado para as configurações de fábrica!",
+            "deleted": deleted_counts
+        }
+        
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=f"Erro ao resetar sistema: {str(e)}")
+
+
 # --- PERFIL DO USUÁRIO ---
 
 @app.get("/api/profile/", response_model=UserProfile)
@@ -2496,81 +2555,7 @@ def get_leakage_analysis(session: Session = Depends(get_session)):
         "suggestions": []
     }
 
-@app.get("/api/interconnected-summary/")
-def get_interconnected_summary(session: Session = Depends(get_session)):
-    """Agrega Metas, Dívidas e Insights em uma única chamada."""
-    goals = session.exec(select(Goal)).all()
-    debts = session.exec(select(Debt)).all()
-    
-    # Buscar algumas transações recentes para dar contexto de fluxo de caixa
-    transactions = session.exec(select(Transaction).limit(10)).all() # Últimas 10
-    
-    # Preparar dados para a IA
-    goals_summary = "\n".join([f"- Meta: {g.name} (Atual: {g.currentAmount}, Alvo: {g.targetAmount})" for g in goals])
-    debts_summary = "\n".join([f"- Dívida: {d.name} (Valor: {d.value}, Vencimento: {d.dueDate})" for d in debts])
-    
-    # Lógica padrão (fallback)
-    insights_list = []
-    if goals: insights_list.append(f"Você tem {len(goals)} metas ativas.")
-    if debts: insights_list.append(f"Atenção com {len(debts)} dívidas pendentes.")
-    
-    suggested_cuts = []
 
-    # TENTATIVA DE IA
-    prompt = f"""
-    Analise a situação financeira global e forneça insights estratégicos "Interligados".
-    
-    Metas Ativas:
-    {goals_summary or "Nenhuma"}
-    
-    Dívidas Pendentes:
-    {debts_summary or "Nenhuma"}
-    
-    Com base nisso, sugira:
-    1. Melhores decisões (ex: focar na dívida X antes da meta Y).
-    2. Cortes sugeridos (especifique o valor estimado de economia).
-    
-    Retorne APENAS JSON:
-    {{
-        "bestDecisions": ["Decisão estratégica 1", "Decisão 2"],
-        "suggestedCuts": [
-            {{ "text": "Descrição do corte (curta)", "value": (float, valor mensal estimado) }}
-        ]
-    }}
-    Seja breve e direto.
-    """
-    
-    ai_result = ask_ai_analysis(prompt, session)
-    
-    if ai_result:
-        # Garantir que suggestedCuts tenha a estrutura correta mesmo se a IA alucinar
-        raw_cuts = ai_result.get("suggestedCuts", [])
-        formatted_cuts = []
-        for cut in raw_cuts:
-            if isinstance(cut, dict) and "text" in cut and "value" in cut:
-                formatted_cuts.append(cut)
-            elif isinstance(cut, str):
-                # Fallback se IA retornar string: tenta extrair valor ou poe default
-                formatted_cuts.append({"text": cut, "value": 0})
-
-        insights = {
-            "bestDecisions": ai_result.get("bestDecisions", insights_list),
-            "suggestedCuts": formatted_cuts
-        }
-    else:
-        insights = {
-            "bestDecisions": insights_list,
-            "suggestedCuts": []
-        }
-    
-    # Ordenar dívidas por urgência para exibição
-    urgent_debts = sorted([d for d in debts if d.isUrgent], key=lambda x: x.value, reverse=True)
-
-    return {
-        "activeGoals": goals[:2],
-        "upcomingDebts": urgent_debts[:2],
-        "insights": insights
-    }
 
 @app.get("/api/predictive-analysis/")
 def get_predictive_analysis(session: Session = Depends(get_session)):

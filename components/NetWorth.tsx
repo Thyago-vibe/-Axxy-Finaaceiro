@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, Home, Car, TrendingUp, TrendingDown, DollarSign, PieChart as PieChartIcon, Wallet, Building, Landmark, CreditCard, MoreHorizontal, Lightbulb, Target, X, Loader2 } from 'lucide-react';
-import { formatCurrency } from '../utils/formatters';
+import { formatCurrency, formatCurrencyInput, parseCurrencyInput } from '../utils/formatters';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { apiService } from '../services/apiService';
 import { NetWorthDashboardData, Asset, Liability } from '../types';
@@ -71,12 +71,11 @@ export const NetWorth: React.FC = () => {
         if (!itemName || !itemValue) return;
 
         await apiService.createAsset({
-            id: '',
             name: itemName,
-            value: parseFloat(itemValue),
+            value: parseCurrencyInput(itemValue),
             type: itemType || 'Outros',
             iconType: itemIcon as any
-        });
+        } as any);
         setAssetModalOpen(false);
         resetForm();
         fetchData();
@@ -87,12 +86,11 @@ export const NetWorth: React.FC = () => {
         if (!itemName || !itemValue) return;
 
         await apiService.createLiability({
-            id: '',
             name: itemName,
-            value: parseFloat(itemValue),
+            value: parseCurrencyInput(itemValue),
             type: itemType || 'Outros',
             iconType: itemIcon as any
-        });
+        } as any);
         setLiabilityModalOpen(false);
         resetForm();
         fetchData();
@@ -402,7 +400,7 @@ export const NetWorth: React.FC = () => {
                         <h3 className="text-xl font-bold text-white mb-4">Adicionar Ativo</h3>
                         <form onSubmit={handleAddAsset} className="space-y-4">
                             <input placeholder="Nome (ex: Casa de Praia)" className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl p-3" value={itemName} onChange={e => setItemName(e.target.value)} />
-                            <input type="number" placeholder="Valor (R$)" className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl p-3" value={itemValue} onChange={e => setItemValue(e.target.value)} />
+                            <input type="text" placeholder="Valor (ex: 150.000,00)" className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl p-3" value={itemValue} onChange={e => setItemValue(formatCurrencyInput(e.target.value))} />
                             <input placeholder="Tipo (ex: Imóvel)" className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl p-3" value={itemType} onChange={e => setItemType(e.target.value)} />
 
                             <div>
@@ -439,7 +437,7 @@ export const NetWorth: React.FC = () => {
                         <h3 className="text-xl font-bold text-white mb-4">Adicionar Passivo</h3>
                         <form onSubmit={handleAddLiability} className="space-y-4">
                             <input placeholder="Nome (ex: Empréstimo)" className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl p-3" value={itemName} onChange={e => setItemName(e.target.value)} />
-                            <input type="number" placeholder="Valor (R$)" className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl p-3" value={itemValue} onChange={e => setItemValue(e.target.value)} />
+                            <input type="text" placeholder="Valor (ex: 50.000,00)" className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl p-3" value={itemValue} onChange={e => setItemValue(formatCurrencyInput(e.target.value))} />
                             <input placeholder="Tipo (ex: Financiamento)" className="w-full bg-[#0b120f] border border-gray-700 text-white rounded-xl p-3" value={itemType} onChange={e => setItemType(e.target.value)} />
 
                             <div>

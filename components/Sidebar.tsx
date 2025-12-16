@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { LayoutDashboard, Receipt, PieChart, Tag, Settings, Target, Sparkles, Wallet, Calculator, BellRing, HeartPulse, Share2, TrendingUp, X, Landmark, Bot } from 'lucide-react';
+import { LayoutDashboard, Receipt, PieChart, Tag, Settings, Target, Sparkles, Wallet, Calculator, BellRing, HeartPulse, TrendingUp, X, Landmark, Bot } from 'lucide-react';
 
 interface SidebarProps {
   currentView: string;
@@ -12,7 +12,6 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, isOpen, onClose }) => {
   const menuItems = [
     { id: 'dashboard', label: 'Visão Geral', icon: LayoutDashboard },
-    { id: 'interconnected-summary', label: 'Resumo Interligado', icon: Share2 },
     { id: 'transactions', label: 'Transações', icon: Receipt },
     { id: 'allocation', label: 'Alocação Quinzenal', icon: PieChart },
     { id: 'budgets', label: 'Planejamento Inteligente', icon: Calculator },
