@@ -353,7 +353,7 @@ export const apiService = {
     const res = await fetch(`${API_URL}/config/ai`);
     return handleApiResponse(res);
   },
-  saveAISettings: async (data: { api_key: string; instructions: string }): Promise<any> => {
+  saveAISettings: async (data: { api_key: string; instructions: string; provider?: string }): Promise<any> => {
     const res = await fetch(`${API_URL}/config/ai`, {
       method: 'POST',
       headers,

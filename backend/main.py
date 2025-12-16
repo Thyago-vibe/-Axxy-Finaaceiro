@@ -146,6 +146,7 @@ class AISettings(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     api_key: str
     instructions: str
+    provider: str = Field(default="openai") # 'openai' | 'openrouter'
     last_tested: Optional[str] = None
     is_active: bool = True
 
@@ -216,10 +217,18 @@ def ask_ai_analysis(prompt: str, session: Session):
         from openai import OpenAI
         import json
         
-        client = OpenAI(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=settings.api_key,
-        )
+        if settings.provider == "openrouter":
+            client = OpenAI(
+                base_url="https://openrouter.ai/api/v1",
+                api_key=settings.api_key,
+            )
+            model_id = "amazon/nova-2-lite-v1:free"
+        else:
+             # Default: OpenAI
+            client = OpenAI(
+                api_key=settings.api_key,
+            )
+            model_id = "gpt-4o-mini"
         
         system_prompt = (
             f"Você é um analista financeiro experiente. {settings.instructions or ''} "
@@ -227,7 +236,7 @@ def ask_ai_analysis(prompt: str, session: Session):
         )
         
         response = client.chat.completions.create(
-            model="amazon/nova-2-lite-v1:free", # Forçando o modelo gratuito que sabemos que funciona
+            model=model_id,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
@@ -276,10 +285,11 @@ def get_ai_settings(session: Session = Depends(get_session)):
     return {
         "api_key": masked_key,
         "instructions": settings.instructions,
+        "provider": settings.provider or "openai",
         "is_connected": settings.is_active,
         "last_tested": settings.last_tested,
-        "model_name": "Amazon Nova 2 Lite (Free)",
-        "provider": "OpenRouter"
+        "model_name": "Amazon Nova 2 Lite (Free)" if settings.provider == "openrouter" else "GPT-4o Mini",
+        "provider_display": "OpenRouter" if settings.provider == "openrouter" else "OpenAI"
     }
 
 @app.post("/api/config/ai")
@@ -289,11 +299,13 @@ def save_ai_settings(data: dict, session: Session = Depends(get_session)):
     
     api_key = data.get("api_key")
     instructions = data.get("instructions", "")
+    provider = data.get("provider", "openai")
     
     if not settings:
         settings = AISettings(
             api_key=api_key, 
             instructions=instructions,
+            provider=provider,
             is_active=False
         )
         session.add(settings)
@@ -303,6 +315,7 @@ def save_ai_settings(data: dict, session: Session = Depends(get_session)):
             settings.api_key = api_key
         
         settings.instructions = instructions
+        settings.provider = provider
         session.add(settings)
         
     session.commit()
@@ -321,13 +334,17 @@ def test_ai_connection(session: Session = Depends(get_session)):
         # Importar client OpenAI (OpenRouter é compatível)
         from openai import OpenAI
         
-        client = OpenAI(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=settings.api_key,
-        )
-        
-        # Modelo Amazon Nova Lite (rápido e eficiente)
-        model_id = "amazon/nova-2-lite-v1:free" 
+        if settings.provider == "openrouter":
+            client = OpenAI(
+                base_url="https://openrouter.ai/api/v1",
+                api_key=settings.api_key,
+            )
+            model_id = "amazon/nova-2-lite-v1:free"
+        else:
+            client = OpenAI(
+                api_key=settings.api_key,
+            )
+            model_id = "gpt-4o-mini" 
         
         completion = client.chat.completions.create(
             model=model_id,

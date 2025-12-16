@@ -6,6 +6,7 @@ import { Eye, EyeOff, Link, Save, CheckCircle, AlertTriangle, Bot } from 'lucide
 export const AISettings: React.FC = () => {
     const [apiKey, setApiKey] = useState('');
     const [instructions, setInstructions] = useState('');
+    const [provider, setProvider] = useState('openai');
     const [showKey, setShowKey] = useState(false);
     const [isConnected, setIsConnected] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
@@ -22,6 +23,7 @@ export const AISettings: React.FC = () => {
             const settings = await apiService.getAISettings();
             setApiKey(settings.api_key || '');
             setInstructions(settings.instructions || '');
+            setProvider(settings.provider || 'openai');
             setIsConnected(settings.is_connected);
         } catch (err) {
             console.error("Failed to load AI settings:", err);
@@ -34,7 +36,8 @@ export const AISettings: React.FC = () => {
         try {
             await apiService.saveAISettings({
                 api_key: apiKey,
-                instructions: instructions
+                instructions: instructions,
+                provider: provider
             });
             // Recarregar para pegar o estado atualizado (ex: mascarado)
             await loadSettings();
@@ -51,7 +54,8 @@ export const AISettings: React.FC = () => {
         try {
             await apiService.saveAISettings({
                 api_key: apiKey, // Manda a chave atual (pode ser a mascarada, mas o back trata)
-                instructions: instructions
+                instructions: instructions,
+                provider: provider
             });
         } catch (err) {
             setError("Erro ao salvar instruções.");
@@ -64,7 +68,7 @@ export const AISettings: React.FC = () => {
         if (confirm("Tem certeza que deseja remover a chave da API?")) {
             setApiKey('');
             setIsConnected(false);
-            await apiService.saveAISettings({ api_key: '', instructions });
+            await apiService.saveAISettings({ api_key: '', instructions, provider });
         }
     };
 
@@ -94,11 +98,42 @@ export const AISettings: React.FC = () => {
         <div className="space-y-6 animate-fade-in max-w-4xl mx-auto w-full py-8">
             {/* PageHeading */}
             <div className="flex flex-col gap-1 mb-8 text-center">
-                <h1 className="text-3xl font-bold text-white tracking-tight">Configurações da IA (Amazon Nova)</h1>
-                <p className="text-gray-400">Gerencie sua integração com a OpenRouter para usar modelos Amazon Nova.</p>
+                <h1 className="text-3xl font-bold text-white tracking-tight">Configurações da IA</h1>
+                <p className="text-gray-400">Escolha o provedor de inteligência artificial para o Axxy.</p>
             </div>
 
             <div className="space-y-8">
+
+                {/* Provider Selection */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <button
+                        onClick={() => { setProvider('openai'); setIsConnected(false); }}
+                        className={`relative rounded-xl border p-4 text-left transition-all hover:border-axxy-primary/50 flex flex-col gap-2 ${provider === 'openai'
+                                ? 'bg-axxy-primary/10 border-axxy-primary ring-1 ring-axxy-primary'
+                                : 'bg-white/5 border-white/10'
+                            }`}
+                    >
+                        <div className="flex items-center justify-between w-full">
+                            <span className="font-bold text-white text-lg">OpenAI (GPT-4o)</span>
+                            {provider === 'openai' && <CheckCircle size={20} className="text-axxy-primary" />}
+                        </div>
+                        <p className="text-sm text-gray-400">Modelo oficial do ChatGPT. Rápido, inteligente e estável. Recomendado.</p>
+                    </button>
+
+                    <button
+                        onClick={() => { setProvider('openrouter'); setIsConnected(false); }}
+                        className={`relative rounded-xl border p-4 text-left transition-all hover:border-axxy-primary/50 flex flex-col gap-2 ${provider === 'openrouter'
+                                ? 'bg-axxy-primary/10 border-axxy-primary ring-1 ring-axxy-primary'
+                                : 'bg-white/5 border-white/10'
+                            }`}
+                    >
+                        <div className="flex items-center justify-between w-full">
+                            <span className="font-bold text-white text-lg">Amazon Nova (via OpenRouter)</span>
+                            {provider === 'openrouter' && <CheckCircle size={20} className="text-axxy-primary" />}
+                        </div>
+                        <p className="text-sm text-gray-400">Modelo alternativo da Amazon. Use se preferir ou se tiver créditos OpenRouter.</p>
+                    </button>
+                </div>
 
                 {/* Model Info Banner */}
                 <div className="rounded-xl border border-axxy-primary/20 bg-axxy-primary/5 p-4 flex items-center justify-between">
@@ -108,12 +143,16 @@ export const AISettings: React.FC = () => {
                         </div>
                         <div>
                             <p className="text-xs text-axxy-primary uppercase font-bold tracking-wider">Modelo Ativo</p>
-                            <h3 className="text-white font-medium text-lg">Amazon Nova 2 Lite (Free)</h3>
+                            <h3 className="text-white font-medium text-lg">
+                                {provider === 'openai' ? 'GPT-4o Mini (OpenAI)' : 'Amazon Nova 2 Lite (OpenRouter)'}
+                            </h3>
                         </div>
                     </div>
                     <div className="text-right hidden md:block">
                         <p className="text-xs text-gray-500">Provedor</p>
-                        <p className="text-sm text-gray-300 font-mono">OpenRouter</p>
+                        <p className="text-sm text-gray-300 font-mono">
+                            {provider === 'openai' ? 'OpenAI' : 'OpenRouter'}
+                        </p>
                     </div>
                 </div>
 
@@ -121,9 +160,9 @@ export const AISettings: React.FC = () => {
                 <div className="rounded-xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                         <div>
-                            <h2 className="text-xl font-bold text-white">Chave da API OpenRouter</h2>
+                            <h2 className="text-xl font-bold text-white">Chave da API {provider === 'openai' ? 'OpenAI' : 'OpenRouter'}</h2>
                             <p className="text-gray-400 text-sm mt-1">
-                                Insira sua chave para ativar os insights. Você pode obter uma chave no <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" className="text-axxy-primary hover:underline">OpenRouter</a>.
+                                Insira sua chave para ativar os insights. Você pode obter uma chave em <a href={provider === 'openai' ? "https://platform.openai.com/api-keys" : "https://openrouter.ai/keys"} target="_blank" rel="noreferrer" className="text-axxy-primary hover:underline">{provider === 'openai' ? 'OpenAI Platform' : 'OpenRouter Dashboard'}</a>.
                             </p>
                         </div>
 
