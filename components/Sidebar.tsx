@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { LayoutDashboard, Receipt, PieChart, Tag, Settings, Target, Sparkles, Wallet, Calculator, BellRing, HeartPulse, TrendingUp, X, Landmark, Bot } from 'lucide-react';
+import { LayoutDashboard, Receipt, PieChart, Tag, Settings, Target, Sparkles, Wallet, Calculator, BellRing, HeartPulse, TrendingUp, X, Landmark, Bot, Calendar, Coins } from 'lucide-react';
 
 interface SidebarProps {
   currentView: string;
@@ -12,11 +12,13 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, isOpen, onClose }) => {
   const menuItems = [
     { id: 'dashboard', label: 'Visão Geral', icon: LayoutDashboard },
+    { id: 'calendar', label: 'Calendário Financeiro', icon: Calendar },
     { id: 'transactions', label: 'Transações', icon: Receipt },
     { id: 'allocation', label: 'Alocação Quinzenal', icon: PieChart },
-    { id: 'budgets', label: 'Planejamento Inteligente', icon: Calculator },
+    { id: 'budgets', label: 'Projetos de Vida', icon: Target },
     { id: 'accounts', label: 'Minhas Contas', icon: Wallet },
     { id: 'net-worth', label: 'Patrimônio Líquido', icon: Landmark },
+    { id: 'investments', label: 'Investimentos', icon: Coins },
     { id: 'reports', label: 'Relatórios', icon: PieChart },
     { id: 'categories', label: 'Categorias', icon: Tag },
     // Metas agora estão integradas ao Planejamento Inteligente

@@ -17,6 +17,9 @@ import { AISettings } from './components/AISettings';
 import { PredictiveAnalysis } from './components/PredictiveAnalysis';
 import { NetWorth } from './components/NetWorth';
 import { PaycheckAllocation } from './components/PaycheckAllocation';
+import { FinancialCalendar } from './components/FinancialCalendar';
+import { Investments } from './components/Investments';
+import { LifeProjects } from './components/LifeProjects';
 import { Transaction, UserProfile, Account } from './types';
 import { Bell, Menu } from 'lucide-react';
 import { apiService } from './services/apiService';
@@ -124,7 +127,7 @@ const App: React.FC = () => {
           }}
         />;
       case 'budgets':
-        return <Budgets />;
+        return <LifeProjects />;
       case 'accounts':
         return <Accounts />;
       case 'categories':
@@ -145,8 +148,17 @@ const App: React.FC = () => {
         />;
       case 'net-worth':
         return <NetWorth />;
+      case 'calendar':
+        return <FinancialCalendar
+          onNavigateToAllocation={(date) => {
+            setPendingAllocation({ amount: 0, date });
+            setCurrentView('allocation');
+          }}
+        />;
       case 'reports':
         return <Reports />;
+      case 'investments':
+        return <Investments />;
       case 'alerts':
         return <BehavioralAlerts />;
       case 'settings':

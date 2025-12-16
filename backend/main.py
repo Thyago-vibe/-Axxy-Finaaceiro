@@ -2971,3 +2971,1028 @@ def get_allocation_history(session: Session = Depends(get_session)):
     
     return result
 
+
+# ==========================================
+# CALENDÁRIO FINANCEIRO COM IA
+# ==========================================
+
+class CalendarInsightRequest(BaseModel):
+    month: int
+    year: int
+
+
+@app.post("/api/calendar/ai-insights")
+def get_calendar_ai_insights(request: CalendarInsightRequest, session: Session = Depends(get_session)):
+    """
+    Gera insights inteligentes sobre o mês selecionado no calendário.
+    Analisa transações, dívidas e metas para fornecer recomendações.
+    """
+    from datetime import date
+    
+    month = request.month
+    year = request.year
+    
+    # Buscar dados do mês
+    month_start = f"{year}-{month:02d}-01"
+    if month == 12:
+        next_month_start = f"{year + 1}-01-01"
+    else:
+        next_month_start = f"{year}-{month + 1:02d}-01"
+    
+    # Transações do mês
+    transactions = session.exec(
+        select(Transaction).where(
+            Transaction.date >= month_start,
+            Transaction.date < next_month_start
+        )
+    ).all()
+    
+    # Todas as dívidas ativas
+    debts = session.exec(select(Debt)).all()
+    
+    # Metas com deadline neste mês
+    goals = session.exec(
+        select(Goal).where(
+            Goal.deadline >= month_start,
+            Goal.deadline < next_month_start
+        )
+    ).all()
+    
+    # Calcular totais
+    total_income = sum(t.amount for t in transactions if t.type == 'income')
+    total_expense = sum(t.amount for t in transactions if t.type == 'expense')
+    total_monthly_debts = sum(d.monthly for d in debts)
+    overdue_debts = [d for d in debts if d.status == 'Atrasado']
+    pending_goals = [g for g in goals if g.currentAmount < g.targetAmount]
+    
+    # Tentar usar IA
+    ai_insights = None
+    
+    prompt = f"""
+Analise os dados financeiros do mês {month}/{year} e forneça insights úteis:
+
+RESUMO FINANCEIRO:
+- Receitas do mês: R$ {total_income:,.2f}
+- Despesas do mês: R$ {total_expense:,.2f}
+- Compromissos mensais (dívidas): R$ {total_monthly_debts:,.2f}
+- Dívidas atrasadas: {len(overdue_debts)}
+- Metas com prazo neste mês: {len(pending_goals)}
+
+DÍVIDAS DETALHADAS:
+{chr(10).join([f"- {d.name}: R$ {d.monthly:,.2f} (status: {d.status})" for d in debts[:5]])}
+
+METAS COM PRAZO NESTE MÊS:
+{chr(10).join([f"- {g.name}: {g.currentAmount}/{g.targetAmount} (faltam R$ {g.targetAmount - g.currentAmount:,.2f})" for g in pending_goals[:3]]) if pending_goals else "Nenhuma meta com prazo neste mês"}
+
+Retorne um JSON com lista de insights no formato:
+{{
+  "insights": [
+    {{
+      "type": "warning|success|tip|info",
+      "title": "Título curto e direto",
+      "description": "Descrição detalhada",
+      "action": "Sugestão de ação (opcional)"
+    }}
+  ]
+}}
+
+Forneça entre 3 e 5 insights relevantes e acionáveis.
+"""
+    
+    ai_response = ask_ai_analysis(prompt, session)
+    
+    if ai_response and "insights" in ai_response:
+        return {"insights": ai_response["insights"]}
+    
+    # Fallback: gerar insights localmente
+    insights = []
+    
+    # Insight 1: Balanço do mês
+    balance = total_income - total_expense - total_monthly_debts
+    if balance > 0:
+        insights.append({
+            "type": "success",
+            "title": "✨ Mês com saldo positivo!",
+            "description": f"Sobra estimada de R$ {balance:,.2f} após despesas e compromissos",
+            "action": "Considere investir ou aumentar reserva de emergência"
+        })
+    elif balance < 0:
+        insights.append({
+            "type": "warning",
+            "title": "⚠️ Atenção ao orçamento",
+            "description": f"Déficit estimado de R$ {abs(balance):,.2f} no mês",
+            "action": "Revise gastos não essenciais ou adie compras"
+        })
+    
+    # Insight 2: Dívidas atrasadas
+    if len(overdue_debts) > 0:
+        total_overdue = sum(d.monthly for d in overdue_debts)
+        insights.append({
+            "type": "warning",
+            "title": f"🚨 {len(overdue_debts)} dívida(s) atrasada(s)",
+            "description": f"Total de R$ {total_overdue:,.2f} em atraso - pode gerar juros",
+            "action": "Priorize a regularização para evitar multas"
+        })
+    
+    # Insight 3: Próximos vencimentos
+    today = date.today()
+    upcoming = [d for d in debts if d.status != 'Atrasado']
+    if len(upcoming) > 0:
+        insights.append({
+            "type": "info",
+            "title": f"📅 {len(upcoming)} compromissos no mês",
+            "description": f"Total de R$ {sum(d.monthly for d in upcoming):,.2f} em contas a pagar",
+            "action": "Mantenha saldo disponível para os vencimentos"
+        })
+    
+    # Insight 4: Metas próximas do prazo
+    if len(pending_goals) > 0:
+        closest = pending_goals[0]
+        remaining = closest.targetAmount - closest.currentAmount
+        insights.append({
+            "type": "tip",
+            "title": f"🎯 Meta \"{closest.name}\" com prazo próximo",
+            "description": f"Faltam R$ {remaining:,.2f} para atingir o objetivo",
+            "action": "Considere aportes extras para não perder o prazo"
+        })
+    
+    # Insight 5: Análise de categorias
+    if transactions:
+        categories = {}
+        for t in transactions:
+            if t.type == 'expense':
+                categories[t.category] = categories.get(t.category, 0) + t.amount
+        
+        if categories:
+            top_category = max(categories.items(), key=lambda x: x[1])
+            insights.append({
+                "type": "info",
+                "title": f"📊 Maior gasto: {top_category[0]}",
+                "description": f"R$ {top_category[1]:,.2f} gastos nesta categoria no mês",
+                "action": "Verifique se está dentro do planejado"
+            })
+    
+    return {"insights": insights[:5]}
+
+
+@app.get("/api/calendar/events")
+def get_calendar_events(
+    month: int = Query(..., ge=1, le=12),
+    year: int = Query(..., ge=2020, le=2100),
+    session: Session = Depends(get_session)
+):
+    """
+    Retorna todos os eventos do calendário para um mês específico.
+    Combina transações, dívidas e metas.
+    """
+    from datetime import date, timedelta
+    
+    month_start = f"{year}-{month:02d}-01"
+    if month == 12:
+        next_month_start = f"{year + 1}-01-01"
+    else:
+        next_month_start = f"{year}-{month + 1:02d}-01"
+    
+    events = []
+    today = date.today()
+    
+    # Transações do mês
+    transactions = session.exec(
+        select(Transaction).where(
+            Transaction.date >= month_start,
+            Transaction.date < next_month_start
+        )
+    ).all()
+    
+    for tx in transactions:
+        tx_date = date.fromisoformat(tx.date) if isinstance(tx.date, str) else tx.date
+        events.append({
+            "id": f"tx-{tx.id}",
+            "date": tx.date,
+            "title": tx.description,
+            "amount": tx.amount,
+            "type": tx.type,
+            "status": tx.status if tx.status else ("paid" if tx_date <= today else "pending"),
+            "category": tx.category,
+            "sourceType": "transaction",
+            "sourceId": tx.id
+        })
+    
+    # Dívidas (gerar evento no dia do vencimento)
+    debts = session.exec(select(Debt)).all()
+    
+    for debt in debts:
+        # Extrair dia do vencimento
+        try:
+            due_day = int(debt.dueDate.split('-')[2]) if '-' in debt.dueDate else int(debt.dueDate)
+        except:
+            due_day = 1
+        
+        # Verificar se o dia existe no mês
+        try:
+            event_date = date(year, month, due_day)
+        except ValueError:
+            # Se o dia não existe (ex: 31 em mês de 30 dias), usar último dia
+            from calendar import monthrange
+            last_day = monthrange(year, month)[1]
+            event_date = date(year, month, last_day)
+        
+        diff_days = (event_date - today).days
+        
+        if diff_days < 0:
+            status = "overdue" if debt.status == 'Atrasado' else "paid"
+        elif diff_days <= 3:
+            status = "pending"
+        else:
+            status = "upcoming"
+        
+        events.append({
+            "id": f"debt-{debt.id}",
+            "date": event_date.isoformat(),
+            "title": debt.name,
+            "amount": debt.monthly,
+            "type": "debt",
+            "status": status,
+            "category": debt.category,
+            "sourceType": "debt",
+            "sourceId": debt.id,
+            "isRecurring": debt.debtType == 'fixo',
+            "daysUntilDue": diff_days
+        })
+    
+    # Metas com deadline no mês
+    goals = session.exec(
+        select(Goal).where(
+            Goal.deadline >= month_start,
+            Goal.deadline < next_month_start
+        )
+    ).all()
+    
+    for goal in goals:
+        goal_date = date.fromisoformat(goal.deadline) if isinstance(goal.deadline, str) else goal.deadline
+        diff_days = (goal_date - today).days
+        
+        events.append({
+            "id": f"goal-{goal.id}",
+            "date": goal.deadline,
+            "title": f"Meta: {goal.name}",
+            "amount": goal.targetAmount - goal.currentAmount,
+            "type": "goal",
+            "status": "overdue" if diff_days < 0 else ("pending" if diff_days <= 7 else "upcoming"),
+            "sourceType": "goal",
+            "sourceId": goal.id,
+            "progress": (goal.currentAmount / goal.targetAmount) * 100 if goal.targetAmount > 0 else 0
+        })
+    
+    return {"events": events, "count": len(events)}
+
+
+# ==========================================
+# INVESTIMENTOS COM IA
+# ==========================================
+
+class Investment(SQLModel, table=True):
+    """Modelo para investimentos"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    ticker: str
+    category: str = "stocks"  # stocks, crypto, fixed_income, fiis, funds, other
+    average_price: float
+    current_price: float
+    quantity: float
+    total_invested: float
+    current_value: float
+    profit_loss: float
+    profit_loss_percent: float
+    created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+    updated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+
+class InvestmentCreate(BaseModel):
+    name: str
+    ticker: str
+    category: str = "stocks"
+    average_price: float
+    current_price: float
+    quantity: float
+
+
+class InvestmentAISuggestionRequest(BaseModel):
+    available_amount: float
+    current_investments: list = []
+
+
+@app.get("/api/investments")
+def get_investments(session: Session = Depends(get_session)):
+    """Lista todos os investimentos"""
+    investments = session.exec(select(Investment)).all()
+    return investments
+
+
+@app.post("/api/investments")
+def create_investment(inv: InvestmentCreate, session: Session = Depends(get_session)):
+    """Cria um novo investimento"""
+    total_invested = inv.average_price * inv.quantity
+    current_value = inv.current_price * inv.quantity
+    profit_loss = current_value - total_invested
+    profit_loss_percent = (profit_loss / total_invested * 100) if total_invested > 0 else 0
+    
+    investment = Investment(
+        name=inv.name,
+        ticker=inv.ticker,
+        category=inv.category,
+        average_price=inv.average_price,
+        current_price=inv.current_price,
+        quantity=inv.quantity,
+        total_invested=total_invested,
+        current_value=current_value,
+        profit_loss=profit_loss,
+        profit_loss_percent=profit_loss_percent,
+    )
+    
+    session.add(investment)
+    session.commit()
+    session.refresh(investment)
+    
+    return investment
+
+
+@app.put("/api/investments/{investment_id}")
+def update_investment(investment_id: int, inv: InvestmentCreate, session: Session = Depends(get_session)):
+    """Atualiza um investimento"""
+    investment = session.get(Investment, investment_id)
+    if not investment:
+        raise HTTPException(status_code=404, detail="Investimento não encontrado")
+    
+    investment.name = inv.name
+    investment.ticker = inv.ticker
+    investment.category = inv.category
+    investment.average_price = inv.average_price
+    investment.current_price = inv.current_price
+    investment.quantity = inv.quantity
+    investment.total_invested = inv.average_price * inv.quantity
+    investment.current_value = inv.current_price * inv.quantity
+    investment.profit_loss = investment.current_value - investment.total_invested
+    investment.profit_loss_percent = (investment.profit_loss / investment.total_invested * 100) if investment.total_invested > 0 else 0
+    investment.updated_at = datetime.now().isoformat()
+    
+    session.add(investment)
+    session.commit()
+    session.refresh(investment)
+    
+    return investment
+
+
+@app.delete("/api/investments/{investment_id}")
+def delete_investment(investment_id: int, session: Session = Depends(get_session)):
+    """Remove um investimento"""
+    investment = session.get(Investment, investment_id)
+    if not investment:
+        raise HTTPException(status_code=404, detail="Investimento não encontrado")
+    
+    session.delete(investment)
+    session.commit()
+    
+    return {"success": True, "message": "Investimento removido com sucesso"}
+
+
+@app.post("/api/investments/ai-suggestions")
+def get_investment_ai_suggestions(request: InvestmentAISuggestionRequest, session: Session = Depends(get_session)):
+    """
+    Gera sugestões de investimento baseadas na IA.
+    Analisa dívidas, despesas e saldo disponível para recomendar onde investir.
+    """
+    from datetime import date
+    
+    # Buscar dados financeiros
+    debts = session.exec(select(Debt)).all()
+    goals = session.exec(select(Goal)).all()
+    
+    # Calcular total de dívidas mensais
+    total_monthly_debts = sum(d.monthly for d in debts)
+    overdue_debts = [d for d in debts if d.status == 'Atrasado']
+    
+    # Calcular progresso das metas
+    goals_progress = []
+    for g in goals:
+        progress = (g.currentAmount / g.targetAmount * 100) if g.targetAmount > 0 else 0
+        goals_progress.append({
+            "name": g.name,
+            "progress": progress,
+            "remaining": g.targetAmount - g.currentAmount
+        })
+    
+    # Analisar carteira atual
+    investments = request.current_investments
+    categories = {}
+    total_invested = 0
+    
+    for inv in investments:
+        cat = inv.get('category', 'other')
+        value = inv.get('current_value', 0)
+        categories[cat] = categories.get(cat, 0) + value
+        total_invested += value
+    
+    # Tentar usar IA
+    prompt = f"""
+Analise a situação financeira e sugira investimentos:
+
+SITUAÇÃO ATUAL:
+- Valor disponível para investir: R$ {request.available_amount:,.2f}
+- Total já investido: R$ {total_invested:,.2f}
+- Dívidas mensais: R$ {total_monthly_debts:,.2f}
+- Dívidas atrasadas: {len(overdue_debts)}
+
+ALOCAÇÃO ATUAL:
+{chr(10).join([f"- {k}: R$ {v:,.2f} ({v/total_invested*100:.1f}%)" for k, v in categories.items()]) if categories else "Nenhum investimento ainda"}
+
+METAS FINANCEIRAS:
+{chr(10).join([f"- {g['name']}: {g['progress']:.0f}% (faltam R$ {g['remaining']:,.2f})" for g in goals_progress[:3]]) if goals_progress else "Nenhuma meta definida"}
+
+Retorne um JSON com sugestões de investimento no formato:
+{{
+  "suggestions": [
+    {{
+      "type": "opportunity|warning|tip|allocation",
+      "title": "Título da sugestão",
+      "description": "Descrição detalhada",
+      "suggested_amount": 1000,
+      "priority": "high|medium|low",
+      "category": "stocks|crypto|fixed_income|fiis|funds"
+    }}
+  ]
+}}
+
+Considere:
+1. Se há dívidas atrasadas, priorize quitá-las antes de investir
+2. Se não tem reserva de emergência, sugira renda fixa com liquidez
+3. Analise a diversificação da carteira
+4. Considere o perfil de risco baseado nos investimentos atuais
+
+Forneça 3-5 sugestões acionáveis.
+"""
+    
+    ai_response = ask_ai_analysis(prompt, session)
+    
+    if ai_response and "suggestions" in ai_response:
+        return {"suggestions": ai_response["suggestions"]}
+    
+    # Fallback: gerar sugestões localmente
+    suggestions = []
+    
+    # 1. Verificar dívidas atrasadas
+    if len(overdue_debts) > 0:
+        total_overdue = sum(d.monthly for d in overdue_debts)
+        suggestions.append({
+            "type": "warning",
+            "title": "⚠️ Quite suas dívidas primeiro!",
+            "description": f"Você tem {len(overdue_debts)} dívida(s) atrasada(s) totalizando R$ {total_overdue:,.2f}/mês. Pagar dívidas com juros altos é o melhor 'investimento'.",
+            "priority": "high",
+            "suggested_amount": min(request.available_amount, total_overdue),
+        })
+    
+    # 2. Verificar se tem valor para investir
+    if request.available_amount > 0:
+        # Sugestão de reserva de emergência
+        has_fixed = 'fixed_income' in categories
+        if not has_fixed and request.available_amount >= 500:
+            suggestions.append({
+                "type": "tip",
+                "title": "🛡️ Monte sua reserva de emergência",
+                "description": "Invista em Tesouro Selic ou CDB de liquidez diária. O ideal é ter 6 meses de despesas guardados.",
+                "priority": "high",
+                "suggested_amount": min(request.available_amount * 0.5, 2000),
+                "category": "fixed_income",
+            })
+        
+        # Sugestão de diversificação
+        if len(categories) < 3 and request.available_amount >= 500:
+            missing = []
+            if 'stocks' not in categories:
+                missing.append("ações brasileiras")
+            if 'fiis' not in categories:
+                missing.append("fundos imobiliários")
+            if 'fixed_income' not in categories:
+                missing.append("renda fixa")
+            
+            if missing:
+                suggestions.append({
+                    "type": "allocation",
+                    "title": "📊 Diversifique sua carteira",
+                    "description": f"Considere adicionar {', '.join(missing[:2])} para reduzir riscos e aumentar retornos.",
+                    "priority": "medium",
+                    "suggested_amount": request.available_amount * 0.3,
+                })
+        
+        # Sugestão baseada no valor disponível
+        if request.available_amount >= 1000:
+            suggestions.append({
+                "type": "opportunity",
+                "title": f"💰 R$ {request.available_amount:,.2f} disponível!",
+                "description": "Baseado em suas receitas e despesas, você tem esse valor sobrando este mês. Considere investir para fazer seu dinheiro trabalhar.",
+                "priority": "high",
+                "suggested_amount": request.available_amount,
+            })
+        elif request.available_amount >= 100:
+            suggestions.append({
+                "type": "tip",
+                "title": "💡 Comece com pouco",
+                "description": f"Mesmo R$ {request.available_amount:,.2f} já é um começo! Considere ETFs ou Tesouro Direto que permitem aportes menores.",
+                "priority": "medium",
+                "suggested_amount": request.available_amount,
+            })
+    else:
+        # Sem valor disponível
+        suggestions.append({
+            "type": "warning",
+            "title": "📊 Revise seu orçamento",
+            "description": "Suas despesas e dívidas consomem toda a renda. Antes de investir, é importante ter um saldo positivo. Analise gastos que podem ser cortados.",
+            "priority": "high",
+        })
+    
+    # 3. Análise de performance (se tiver investimentos)
+    if investments:
+        worst = min(investments, key=lambda x: x.get('profit_loss_percent', 0))
+        best = max(investments, key=lambda x: x.get('profit_loss_percent', 0))
+        
+        if worst.get('profit_loss_percent', 0) < -30:
+            suggestions.append({
+                "type": "warning",
+                "title": f"📉 {worst.get('name', 'Ativo')} em queda forte",
+                "description": f"Perda de {abs(worst.get('profit_loss_percent', 0)):.1f}%. Avalie se vale manter ou realizar prejuízo para realocar.",
+                "priority": "medium",
+            })
+        
+        if best.get('profit_loss_percent', 0) > 50:
+            suggestions.append({
+                "type": "tip",
+                "title": f"🎯 Considere realizar lucros em {best.get('name', 'ativo')}",
+                "description": f"Valorização de +{best.get('profit_loss_percent', 0):.1f}%. Realizar lucros parciais reduz risco e garante ganhos.",
+                "priority": "medium",
+            })
+    
+    return {"suggestions": suggestions[:5]}
+
+
+@app.get("/api/investments/summary")
+def get_investments_summary(session: Session = Depends(get_session)):
+    """Retorna resumo da carteira de investimentos"""
+    investments = session.exec(select(Investment)).all()
+    
+    if not investments:
+        return {
+            "total_invested": 0,
+            "current_value": 0,
+            "total_profit": 0,
+            "total_profit_percent": 0,
+            "best_performer": None,
+            "worst_performer": None,
+            "allocation": [],
+        }
+    
+    total_invested = sum(i.total_invested for i in investments)
+    current_value = sum(i.current_value for i in investments)
+    total_profit = current_value - total_invested
+    total_profit_percent = (total_profit / total_invested * 100) if total_invested > 0 else 0
+    
+    sorted_inv = sorted(investments, key=lambda x: x.profit_loss_percent, reverse=True)
+    best = sorted_inv[0]
+    worst = sorted_inv[-1]
+    
+    # Alocação por categoria
+    categories = {}
+    for inv in investments:
+        categories[inv.category] = categories.get(inv.category, 0) + inv.current_value
+    
+    allocation = [
+        {"category": cat, "value": val, "percent": (val / current_value * 100) if current_value > 0 else 0}
+        for cat, val in categories.items()
+    ]
+    
+    return {
+        "total_invested": total_invested,
+        "current_value": current_value,
+        "total_profit": total_profit,
+        "total_profit_percent": total_profit_percent,
+        "best_performer": {"name": best.ticker, "percent": best.profit_loss_percent},
+        "worst_performer": {"name": worst.ticker, "percent": worst.profit_loss_percent} if worst.profit_loss_percent < 0 else None,
+        "allocation": allocation,
+    }
+
+
+# ==========================================
+# PLANEJAMENTO INTELIGENTE (PROJETOS)
+# ==========================================
+
+class ProjectStep(BaseModel):
+    name: str
+    estimated_cost: float
+    category: str
+    priority: str  # Alta, Média, Baixa
+    description: str
+
+class ProjectPlan(BaseModel):
+    title: str
+    total_estimated: float
+    description: str
+    steps: List[ProjectStep]
+    timeline_months: int
+
+class CreatePlanRequest(BaseModel):
+    goal_description: str
+    monthly_budget: Optional[float] = None
+
+@app.post("/api/planning/create-plan")
+def create_smart_plan(request: CreatePlanRequest, session: Session = Depends(get_session)):
+    """
+    IA cria um plano detalhado baseado no objetivo do usuário.
+    Ex: 'Reformar meu quarto gamer' -> Lista de equipamentos, móveis, pintura.
+    """
+    
+    prompt = f"""
+    Atue como um Especialista em Planejamento Financeiro e Gestão de Projetos Pessoais.
+    
+    O usuário quer realizar o seguinte projeto: "{request.goal_description}"
+    Orçamento mensal disponível (opcional): {f'R$ {request.monthly_budget}' if request.monthly_budget else 'Não informado'}
+    
+    Crie um plano detalhado e realista para este projeto.
+    
+    Retorne APENAS um JSON estrito no seguinte formato:
+    {{
+        "title": "Título Sugerido para o Projeto",
+        "description": "Breve resumo do que será feito",
+        "total_estimated": 15000.00,
+        "timeline_months": 6,
+        "steps": [
+            {{
+                "name": "Nome da Etapa (ex: Comprar Pisos)",
+                "estimated_cost": 2000.00,
+                "category": "Material de Construção",
+                "priority": "Alta",
+                "description": "Porcelanato 60x60 para 20m²"
+            }}
+        ]
+    }}
+    
+    Regras:
+    1. Estime preços realistas do mercado brasileiro atual.
+    2. Quebre o projeto em etapas lógicas.
+    3. Seja específico nas descrições.
+    """
+    
+    ai_response = ask_ai_analysis(prompt, session)
+    
+    # Fallback caso a IA falhe ou retorne vazio
+    if not ai_response:
+        return {
+            "title": "Projeto Genérico",
+            "description": "Não foi possível gerar detalhes automáticos.",
+            "total_estimated": 0,
+            "timeline_months": 0,
+            "steps": []
+        }
+        
+    return ai_response
+
+
+# ==========================================
+# PROJETOS DE VIDA INTEGRADO
+# ==========================================
+
+class LifeProject(SQLModel, table=True):
+    """Projeto de vida (Casa, Saúde, Lazer, etc)"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    category: str = "casa"  # casa, saude, lazer, carreira, familia, outro
+    icon: str = "🏠"
+    description: Optional[str] = None
+    total_estimated: float = 0
+    total_saved: float = 0
+    deadline: Optional[str] = None
+    status: str = "ativo"  # ativo, pausado, concluido
+    created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+    priority: str = "media"  # alta, media, baixa
+
+
+class ProjectTask(SQLModel, table=True):
+    """Tarefa/Etapa de um projeto"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="lifeproject.id")
+    name: str
+    estimated_cost: float
+    actual_cost: Optional[float] = None
+    priority: str = "media"  # alta, media, baixa
+    status: str = "pendente"  # pendente, em_andamento, concluido
+    notes: Optional[str] = None
+    due_date: Optional[str] = None
+    created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+
+class LifeProjectCreate(BaseModel):
+    name: str
+    category: str = "casa"
+    icon: str = "🏠"
+    description: Optional[str] = None
+    deadline: Optional[str] = None
+    priority: str = "media"
+
+
+class ProjectTaskCreate(BaseModel):
+    name: str
+    estimated_cost: float
+    priority: str = "media"
+    notes: Optional[str] = None
+    due_date: Optional[str] = None
+
+
+# --- CRUD Projetos ---
+
+@app.get("/api/life-projects")
+def get_life_projects(session: Session = Depends(get_session)):
+    """Lista todos os projetos de vida com suas tarefas"""
+    projects = session.exec(select(LifeProject).where(LifeProject.status != "arquivado")).all()
+    
+    result = []
+    for project in projects:
+        tasks = session.exec(select(ProjectTask).where(ProjectTask.project_id == project.id)).all()
+        
+        # Calcular totais
+        total_estimated = sum(t.estimated_cost for t in tasks)
+        total_spent = sum(t.actual_cost or 0 for t in tasks if t.status == "concluido")
+        completed_count = len([t for t in tasks if t.status == "concluido"])
+        
+        result.append({
+            **project.model_dump(),
+            "total_estimated": total_estimated,
+            "total_spent": total_spent,
+            "tasks_count": len(tasks),
+            "completed_count": completed_count,
+            "progress": (completed_count / len(tasks) * 100) if tasks else 0,
+            "tasks": [t.model_dump() for t in tasks]
+        })
+    
+    return result
+
+
+@app.post("/api/life-projects")
+def create_life_project(project: LifeProjectCreate, session: Session = Depends(get_session)):
+    """Cria um novo projeto de vida"""
+    db_project = LifeProject(**project.model_dump())
+    session.add(db_project)
+    session.commit()
+    session.refresh(db_project)
+    return db_project
+
+
+@app.put("/api/life-projects/{project_id}")
+def update_life_project(project_id: int, project: LifeProjectCreate, session: Session = Depends(get_session)):
+    """Atualiza um projeto"""
+    db_project = session.get(LifeProject, project_id)
+    if not db_project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    
+    for key, value in project.model_dump().items():
+        setattr(db_project, key, value)
+    
+    session.add(db_project)
+    session.commit()
+    session.refresh(db_project)
+    return db_project
+
+
+@app.delete("/api/life-projects/{project_id}")
+def delete_life_project(project_id: int, session: Session = Depends(get_session)):
+    """Remove um projeto e suas tarefas"""
+    project = session.get(LifeProject, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    
+    # Remover tarefas associadas
+    tasks = session.exec(select(ProjectTask).where(ProjectTask.project_id == project_id)).all()
+    for task in tasks:
+        session.delete(task)
+    
+    session.delete(project)
+    session.commit()
+    return {"success": True}
+
+
+# --- CRUD Tarefas ---
+
+@app.post("/api/life-projects/{project_id}/tasks")
+def create_project_task(project_id: int, task: ProjectTaskCreate, session: Session = Depends(get_session)):
+    """Adiciona uma tarefa ao projeto"""
+    project = session.get(LifeProject, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    
+    db_task = ProjectTask(project_id=project_id, **task.model_dump())
+    session.add(db_task)
+    session.commit()
+    session.refresh(db_task)
+    return db_task
+
+
+@app.put("/api/life-projects/tasks/{task_id}")
+def update_project_task(task_id: int, task: ProjectTaskCreate, session: Session = Depends(get_session)):
+    """Atualiza uma tarefa"""
+    db_task = session.get(ProjectTask, task_id)
+    if not db_task:
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
+    
+    for key, value in task.model_dump().items():
+        setattr(db_task, key, value)
+    
+    session.add(db_task)
+    session.commit()
+    session.refresh(db_task)
+    return db_task
+
+
+@app.put("/api/life-projects/tasks/{task_id}/complete")
+def complete_project_task(task_id: int, actual_cost: float = None, session: Session = Depends(get_session)):
+    """Marca tarefa como concluída"""
+    task = session.get(ProjectTask, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
+    
+    task.status = "concluido"
+    if actual_cost is not None:
+        task.actual_cost = actual_cost
+    else:
+        task.actual_cost = task.estimated_cost
+    
+    session.add(task)
+    session.commit()
+    session.refresh(task)
+    return task
+
+
+@app.delete("/api/life-projects/tasks/{task_id}")
+def delete_project_task(task_id: int, session: Session = Depends(get_session)):
+    """Remove uma tarefa"""
+    task = session.get(ProjectTask, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
+    
+    session.delete(task)
+    session.commit()
+    return {"success": True}
+
+
+# --- IA para Projetos ---
+
+class AIProjectSuggestionRequest(BaseModel):
+    project_description: str
+    category: str = "casa"
+    budget: Optional[float] = None
+
+
+@app.post("/api/life-projects/ai-suggest-tasks")
+def ai_suggest_project_tasks(request: AIProjectSuggestionRequest, session: Session = Depends(get_session)):
+    """IA sugere etapas detalhadas para um projeto"""
+    
+    prompt = f"""
+Você é um especialista em planejamento de projetos pessoais.
+
+O usuário quer realizar: "{request.project_description}"
+Categoria: {request.category}
+Orçamento disponível: {f'R$ {request.budget:,.2f}' if request.budget else 'Não informado'}
+
+Crie um plano detalhado com etapas, custos estimados (preços reais do mercado brasileiro atual) e prioridades.
+
+Retorne APENAS um JSON válido no formato:
+{{
+    "project_name": "Nome sugerido para o projeto",
+    "total_estimated": 15000.00,
+    "timeline_months": 3,
+    "tasks": [
+        {{
+            "name": "Nome da etapa",
+            "estimated_cost": 2000.00,
+            "priority": "alta",
+            "notes": "Detalhes importantes"
+        }}
+    ],
+    "tips": ["Dica 1", "Dica 2"]
+}}
+
+Regras:
+1. Quebre em etapas lógicas e sequenciais
+2. Use preços realistas do mercado brasileiro
+3. Priorize: alta (essencial), media (importante), baixa (opcional)
+4. Inclua mão de obra quando aplicável
+"""
+    
+    ai_response = ask_ai_analysis(prompt, session)
+    
+    if not ai_response:
+        # Fallback genérico
+        return {
+            "project_name": request.project_description,
+            "total_estimated": 0,
+            "timeline_months": 1,
+            "tasks": [],
+            "tips": ["Não foi possível gerar sugestões automáticas. Adicione as etapas manualmente."]
+        }
+    
+    return ai_response
+
+
+@app.post("/api/life-projects/ai-allocation-suggestion")
+def ai_allocation_suggestion(session: Session = Depends(get_session)):
+    """
+    IA analisa todos os projetos e sugere como alocar a próxima quinzena.
+    Integra com a feature de Alocação Quinzenal.
+    """
+    
+    # Buscar projetos ativos
+    projects = session.exec(select(LifeProject).where(LifeProject.status == "ativo")).all()
+    
+    # Buscar tarefas pendentes de alta prioridade
+    high_priority_tasks = []
+    for project in projects:
+        tasks = session.exec(
+            select(ProjectTask)
+            .where(ProjectTask.project_id == project.id)
+            .where(ProjectTask.status == "pendente")
+            .where(ProjectTask.priority == "alta")
+        ).all()
+        for task in tasks:
+            high_priority_tasks.append({
+                "project": project.name,
+                "project_category": project.category,
+                "task": task.name,
+                "cost": task.estimated_cost,
+                "icon": project.icon
+            })
+    
+    # Buscar dívidas
+    debts = session.exec(select(Debt).where(Debt.status != "Quitado")).all()
+    monthly_debts = sum(d.monthly for d in debts)
+    
+    # Ordenar tarefas por custo (menor primeiro para viabilidade)
+    high_priority_tasks.sort(key=lambda x: x["cost"])
+    
+    suggestions = []
+    
+    # 1. Dívidas primeiro
+    if monthly_debts > 0:
+        suggestions.append({
+            "category": "dividas",
+            "icon": "💳",
+            "title": "Compromissos Fixos",
+            "description": f"{len(debts)} dívidas ativas",
+            "suggested_amount": monthly_debts,
+            "priority": "essencial",
+            "items": [{"name": d.name, "value": d.monthly} for d in debts[:3]]
+        })
+    
+    # 2. Tarefas de alta prioridade dos projetos
+    for task in high_priority_tasks[:3]:
+        suggestions.append({
+            "category": task["project_category"],
+            "icon": task["icon"],
+            "title": f"{task['project']}: {task['task']}",
+            "description": f"Prioridade alta",
+            "suggested_amount": task["cost"],
+            "priority": "alta",
+        })
+    
+    # 3. Reserva de emergência (se não existir investimento em renda fixa)
+    investments = session.exec(select(Investment).where(Investment.category == "fixed_income")).all()
+    if not investments:
+        suggestions.append({
+            "category": "seguranca",
+            "icon": "🛡️",
+            "title": "Reserva de Emergência",
+            "description": "Recomendado ter 6 meses de despesas",
+            "suggested_amount": 500,  # Valor sugerido inicial
+            "priority": "media",
+        })
+    
+    return {
+        "suggestions": suggestions,
+        "total_projects": len(projects),
+        "high_priority_tasks": len(high_priority_tasks),
+        "message": f"Você tem {len(high_priority_tasks)} tarefas de alta prioridade em {len(projects)} projetos ativos."
+    }
+
+
+# Categorias de projetos disponíveis
+PROJECT_CATEGORIES = [
+    {"id": "casa", "name": "Casa & Reforma", "icon": "🏠"},
+    {"id": "saude", "name": "Saúde & Bem-estar", "icon": "🏥"},
+    {"id": "lazer", "name": "Lazer & Viagens", "icon": "🎉"},
+    {"id": "carreira", "name": "Carreira & Educação", "icon": "💼"},
+    {"id": "familia", "name": "Família", "icon": "👨‍👩‍👧"},
+    {"id": "veiculo", "name": "Veículo", "icon": "🚗"},
+    {"id": "tecnologia", "name": "Tecnologia", "icon": "💻"},
+    {"id": "outro", "name": "Outros", "icon": "📦"},
+]
+
+@app.get("/api/life-projects/categories")
+def get_project_categories():
+    """Lista categorias disponíveis para projetos"""
+    return PROJECT_CATEGORIES
+

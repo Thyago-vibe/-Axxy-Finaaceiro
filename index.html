@@ -20,8 +20,8 @@
               card: '#15221c', // Slightly lighter card bg
               primary: '#22c55e', // Vibrant Green
               primaryHover: '#16a34a',
-              text: '#e2e8f0',
-              muted: '#94a3b8',
+              text: '#ffffff',
+              muted: '#e2e8f0',
               border: '#1e332a'
             }
           },
@@ -45,9 +45,9 @@
       --bg-primary: #0b120f;
       --bg-card: #15221c;
       --bg-input: #0b120f;
-      --text-primary: #e2e8f0;
-      --text-secondary: #94a3b8;
-      --text-muted: #64748b;
+      --text-primary: #ffffff;
+      --text-secondary: #e2e8f0;
+      --text-muted: #cbd5e1;
       --border-color: #1e332a;
       --accent-primary: #22c55e;
       --accent-hover: #16a34a;
@@ -93,6 +93,27 @@
     [data-theme="light"] .text-gray-400,
     [data-theme="light"] .text-gray-500 {
       color: var(--text-secondary) !important;
+    }
+
+    /* Improved text contrast for dark theme - gray colors */
+    [data-theme="dark"] .text-gray-400,
+    .text-gray-400 {
+      color: #e2e8f0 !important;
+    }
+
+    [data-theme="dark"] .text-gray-500,
+    .text-gray-500 {
+      color: #cbd5e1 !important;
+    }
+
+    /* Chart axis labels and text */
+    .recharts-text,
+    .recharts-cartesian-axis-tick-value {
+      fill: #e2e8f0 !important;
+    }
+
+    .recharts-legend-item-text {
+      color: #ffffff !important;
     }
 
     [data-theme="light"] .border-\[\#1e332a\],
