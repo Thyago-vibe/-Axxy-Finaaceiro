@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, X, AlertCircle, Sparkles, TrendingUp, Target, Zap, DollarSign, Tag, ChevronDown } from 'lucide-react';
+import { Plus, Edit2, Trash2, X, AlertCircle, Sparkles, TrendingUp, Zap, DollarSign, Tag, ChevronDown } from 'lucide-react';
 import { formatCurrency, formatCurrencyInput, parseCurrencyInput } from '../utils/formatters';
 import { Debt, Account, Category } from '../types';
 import { apiService } from '../services/apiService';
@@ -46,7 +46,17 @@ export const FinancialHealth: React.FC<FinancialHealthProps> = ({ debts: initial
 
   // Cálculo de totalDebt movido para antes do useMemo para evitar erro de referência
   const safeDebtsForCalc = Array.isArray(debts) ? debts : [];
-  const totalDebt = safeDebtsForCalc.reduce((sum, d) => sum + (typeof d.remaining === 'number' ? d.remaining : 0), 0);
+
+  // Função auxiliar para calcular valor real da dívida
+  // Dívidas fixas usam monthly, parceladas usam remaining
+  const getDebtValue = (d: Debt) => {
+    if (d.debtType === 'fixo' || d.remaining === 0) {
+      return typeof d.monthly === 'number' ? d.monthly : 0;
+    }
+    return typeof d.remaining === 'number' ? d.remaining : 0;
+  };
+
+  const totalDebt = safeDebtsForCalc.reduce((sum, d) => sum + getDebtValue(d), 0);
 
   // Mock data for Evolution Chart
   const evolutionData = React.useMemo(() => {
@@ -346,7 +356,7 @@ export const FinancialHealth: React.FC<FinancialHealthProps> = ({ debts: initial
 
   const pendingPayments = safeDebts
     .filter(d => d.status === 'Pendente')
-    .reduce((sum, d) => sum + (typeof d.monthly === 'number' ? d.monthly : 0), 0);
+    .reduce((sum, d) => sum + getDebtValue(d), 0);
 
   // Sort seguro usando cópia
   const sortedDebts = [...safeDebts].sort((a, b) => {
@@ -513,7 +523,7 @@ export const FinancialHealth: React.FC<FinancialHealthProps> = ({ debts: initial
             {chartView === 'status' ? (
               // Status View (Existing Bars)
               (() => {
-                const getDebtValue = (d: Debt) => (d.debtType === 'fixo' || d.remaining === 0) ? d.monthly : d.remaining;
+                // Usa a função getDebtValue definida no escopo do componente
                 const emDiaVal = safeDebts.filter(d => d.status === 'Em dia').reduce((acc, d) => acc + getDebtValue(d), 0);
                 const pendenteVal = safeDebts.filter(d => d.status === 'Pendente').reduce((acc, d) => acc + getDebtValue(d), 0);
                 const atrasadoVal = safeDebts.filter(d => d.status === 'Atrasado').reduce((acc, d) => acc + getDebtValue(d), 0);
@@ -554,7 +564,7 @@ export const FinancialHealth: React.FC<FinancialHealthProps> = ({ debts: initial
               (() => {
                 const categoryData = safeDebts.reduce((acc, debt) => {
                   const cat = debt.category || 'Outros';
-                  const value = (debt.debtType === 'fixo' || debt.remaining === 0) ? debt.monthly : debt.remaining;
+                  const value = getDebtValue(debt);
                   acc[cat] = (acc[cat] || 0) + value;
                   return acc;
                 }, {} as Record<string, number>);
@@ -637,57 +647,11 @@ export const FinancialHealth: React.FC<FinancialHealthProps> = ({ debts: initial
             <p>Analisando seus dados...</p>
           </div>
         ) : aiAnalysis ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Score e Status */}
-            <div className="bg-[#0f1a16] rounded-2xl p-5">
-              <div className="flex items-center gap-4 mb-4">
-                <div className={`text-5xl font-black ${(aiAnalysis.score || 0) >= 70 ? 'text-green-400' :
-                  (aiAnalysis.score || 0) >= 40 ? 'text-yellow-400' : 'text-red-400'
-                  }`}>
-                  {aiAnalysis.score || 50}
-                </div>
-                <div>
-                  <p className="text-gray-400 text-sm">Score de Saúde</p>
-                  <p className={`font-bold ${aiAnalysis.status === 'excellent' ? 'text-green-400' :
-                    aiAnalysis.status === 'good' ? 'text-green-300' :
-                      aiAnalysis.status === 'warning' ? 'text-yellow-400' : 'text-red-400'
-                    }`}>
-                    {aiAnalysis.status === 'excellent' ? '🌟 Excelente' :
-                      aiAnalysis.status === 'good' ? '✅ Bom' :
-                        aiAnalysis.status === 'warning' ? '⚠️ Atenção' : '🚨 Crítico'}
-                  </p>
-                </div>
-              </div>
-              {aiAnalysis.summary && (
-                <p className="text-gray-300 text-sm">{aiAnalysis.summary}</p>
-              )}
-              {aiAnalysis.savings_tip && (
-                <div className="mt-4 p-3 bg-axxy-primary/10 rounded-xl border border-axxy-primary/20">
-                  <p className="text-xs text-axxy-primary font-medium">💡 Dica de Economia</p>
-                  <p className="text-sm text-gray-300 mt-1">{aiAnalysis.savings_tip}</p>
-                </div>
-              )}
-            </div>
-
-            {/* Recomendações */}
-            <div className="bg-[#0f1a16] rounded-2xl p-5">
-              <p className="text-white font-bold mb-3 flex items-center gap-2">
-                <Target size={18} className="text-axxy-primary" />
-                Recomendações
-              </p>
-              {aiAnalysis.recommendations && aiAnalysis.recommendations.length > 0 ? (
-                <ul className="space-y-2">
-                  {aiAnalysis.recommendations.slice(0, 4).map((rec, i) => (
-                    <li key={i} className="text-sm text-gray-300 flex items-start gap-2">
-                      <span className="text-axxy-primary mt-0.5">•</span>
-                      {rec}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-gray-500 text-sm">Sem recomendações no momento</p>
-              )}
-            </div>
+          <div>
+            {/* Insights */}
+            {aiAnalysis.summary && (
+              <p className="text-gray-300 text-sm">{aiAnalysis.summary}</p>
+            )}
           </div>
         ) : (
           <div className="text-center py-8 text-gray-500">
@@ -720,9 +684,15 @@ export const FinancialHealth: React.FC<FinancialHealthProps> = ({ debts: initial
                   </div>
                   <div className="text-right">
                     {(() => {
-                      // Tentar encontrar a dívida original para pegar o valor mensal se for fixa
-                      const debtRef = safeDebts.find(d => d.name === p.nome);
-                      const displayValue = (debtRef?.debtType === 'fixo' || !p.valor_restante) ? (debtRef?.monthly || p.valor_restante || 0) : p.valor_restante;
+                      // Encontrar a dívida original para pegar o valor correto
+                      // Usar comparação flexível (toLowerCase + includes) para match
+                      const debtRef = safeDebts.find(d =>
+                        d.name.toLowerCase() === p.nome.toLowerCase() ||
+                        d.name.toLowerCase().includes(p.nome.toLowerCase()) ||
+                        p.nome.toLowerCase().includes(d.name.toLowerCase())
+                      );
+                      // Usar o valor da dívida encontrada
+                      const displayValue = debtRef ? getDebtValue(debtRef) : (p.valor_restante || 0);
                       return <p className="text-white font-bold">{formatCurrency(displayValue)}</p>;
                     })()}
                     <p className={`text-xs ${p.urgencia === 'alta' ? 'text-red-400' :

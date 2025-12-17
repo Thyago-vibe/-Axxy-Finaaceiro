@@ -230,3 +230,43 @@ export interface PaycheckAllocationHistory {
   categories: { id: string; items: AllocationItem[]; total: number }[];
 }
 
+// --- Life Projects Types ---
+
+export interface LifeProject {
+  id: number;
+  name: string;
+  description?: string;
+  category: string;
+  target_amount: number;
+  current_amount: number;
+  deadline?: string;
+  priority: 'essencial' | 'alto' | 'medio' | 'baixo';
+  status: 'active' | 'completed' | 'paused';
+  color?: string;
+  icon?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ProjectTask {
+  id: number;
+  project_id: number;
+  name: string;
+  description?: string;
+  target_amount: number;
+  current_amount: number;
+  due_date?: string;
+  completed: boolean;
+  order?: number;
+}
+
+// --- Net Worth Goal Types ---
+
+export interface NetWorthGoal {
+  id: number;
+  target_amount: number;
+  target_date?: string;
+  description?: string;
+  is_active: boolean;
+  created_at?: string;
+}
